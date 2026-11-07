@@ -2,11 +2,27 @@
 
 # Lanecast
 
-[lanecast.live](https://lanecast.live) · Stream swim meets to YouTube from one app.
+[lanecast.live](https://lanecast.live)
 
 <br clear="left">
 
- Lanecast reads the timing console and HY-TEK Meet Manager over serial, will take the camera over the network, composites the overlays and sends the program out — on Linux, Windows and macOS, from a single install.
+Lanecast is designed to be an all-in-one, easy-to-use software that creates professional YouTube Live streams for swim meets.
+
+If you are reading this, you are probably that guy who was asked by your organization to fix problems with your timing system and scoreboard, and you find yourself wrangling cables around a hot pool. You're not alone, I've been there!
+
+Lanecast is free and extensible. It is written by AI with a human touch.
+
+It is very easy and quite fun to customize your themes with AI too!
+
+You can use Lanecast as much as you want and owe nothing in return. If you do want to pay it forward, feel free to send a tip.
+
+We cannot offer direct support, but we try to document things the best we can, and AI tools can provide great advice. Just send them a link to this page and ask away!
+
+Have fun & tell your friends!
+
+## How it works
+
+Lanecast reads the timing console and HY-TEK Meet Manager over serial, will take the camera over the network, composites the overlays and sends the program out — on Linux, Windows and macOS, from a single install.
 
 **Status: early.** The data side works: timer in, Meet Manager in, overlay feed out, with a simulated meet for trying it without hardware. Camera, compositing and the YouTube encoder are next; see [docs/architecture.md](docs/architecture.md) for the plan.
 
