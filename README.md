@@ -6,19 +6,17 @@
 
 <br clear="left">
 
-Lanecast is designed to be an all-in-one, easy-to-use software that creates professional YouTube Live streams for swim meets.
+Lanecast is all-in-one, easy-to-use software that puts on professional YouTube Live streams of swim meets.
 
-If you are reading this, you are probably that guy who was asked by your organization to fix problems with your timing system and scoreboard, and you find yourself wrangling cables around a hot pool. You're not alone, I've been there!
+If you're reading this, you're probably the team's designated tech person: the one who got voluntold to "take a look at" the timing system and the scoreboard, and now finds yourself wrangling cables on a hot pool deck. You're not alone. I've been there!
 
-Lanecast is free and extensible. It is written by AI with a human touch.
+Lanecast is free and extensible. It's written by AI with a human touch, and it's easy (and quite fun) to customize your own themes with AI too.
 
-It is very easy and quite fun to customize your themes with AI too!
+Use Lanecast as much as you want; you owe nothing in return. If you'd like to pay it forward, tips are welcome.
 
-You can use Lanecast as much as you want and owe nothing in return. If you do want to pay it forward, feel free to send a tip.
+We can't offer direct support, but we document things as well as we can, and AI tools give great advice: send one a link to this page and ask away.
 
-We cannot offer direct support, but we try to document things the best we can, and AI tools can provide great advice. Just send them a link to this page and ask away!
-
-Have fun & tell your friends!
+Have fun, and tell your friends!
 
 ## How it works
 
