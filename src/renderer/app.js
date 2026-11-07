@@ -142,15 +142,23 @@
     class SimCamera {
         constructor() {
             this.canvas = document.createElement('canvas'); this.canvas.width = 1280; this.canvas.height = 720;
-            this.ctx = this.canvas.getContext('2d'); this.media = null; this.element = null; this.stream = this.canvas.captureStream(30);
+            this.ctx = this.canvas.getContext('2d'); this.media = null; this.element = null; this.url = null; this.stream = this.canvas.captureStream(30);
             const draw = () => { this.draw(); requestAnimationFrame(draw); }; draw();
         }
         setMedia(media) {
             if (JSON.stringify(media) === JSON.stringify(this.media)) return;
             this.media = media; this.element = null;
+            if (this.url) { URL.revokeObjectURL(this.url); this.url = null; }
             if (!media) return;
-            if (media.kind === 'video') { const v = document.createElement('video'); v.src = media.url; v.muted = true; v.loop = true; v.playsInline = true; v.play().catch(() => {}); this.element = v; }
-            else { const img = new Image(); img.src = media.url; this.element = img; }
+            // The file's bytes come from the main process and become a same-origin blob, so the canvas stays untainted and keeps streaming.
+            const show = url => {
+                if (this.media !== media) return;
+                this.url = url;
+                if (media.kind === 'video') { const v = document.createElement('video'); v.src = url; v.muted = true; v.loop = true; v.playsInline = true; v.play().catch(() => {}); this.element = v; }
+                else { const img = new Image(); img.src = url; this.element = img; }
+            };
+            if (media.url) show(media.url);                                            // design mode hands a blob URL straight over
+            else api.sim.mediaBytes().then(file => { if (file) show(URL.createObjectURL(new Blob([file.bytes], { type: file.mime }))); }).catch(e => showError(e));
         }
         draw() {
             const { ctx, canvas } = this, W = canvas.width, H = canvas.height, el = this.element;

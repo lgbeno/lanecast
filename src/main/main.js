@@ -5,10 +5,9 @@
  *   cameras     -> go2rtc -> window (WebRTC)
  */
 'use strict';
-const { app, BrowserWindow, ipcMain, dialog, protocol, net } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog } = require('electron');
 const path = require('node:path');
 const fs = require('node:fs/promises');
-const { pathToFileURL } = require('node:url');
 const { SerialRoles } = require('./serial');
 const { Relay } = require('./relay');
 const { Store } = require('./store');
@@ -16,15 +15,15 @@ const { CameraEngine } = require('./cameras');
 
 const PARTS = ['timer', 'events', 'cameras'];
 const IMAGES = ['png', 'jpg', 'jpeg', 'gif', 'webp'], VIDEOS = ['mp4', 'm4v', 'mov', 'webm'];
+const MIME = { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', webp: 'image/webp', mp4: 'video/mp4', m4v: 'video/mp4', mov: 'video/quicktime', webm: 'video/webm' };
+const MEDIA_LIMIT = 500 * 1024 * 1024;
 let win = null, serial = null, relay = null, store = null, cameras = null;
 // Each part can be simulated on its own: the timer, the meet data, the cameras.
 const simulated = { timer: false, events: false, cameras: false };
-let simMedia = null;             // the simulated camera's picture: { path, name, kind: 'image' | 'video' }
-const allSimulated = process.argv.includes('--simulate') || process.env.LANECAST_SIMULATE === '1';
+let simMedia = null;             // the simulated camera's picture: { path, name, kind: 'image' | 'video', mime, version }
+// Nothing is simulated unless it was last time; LANECAST_SIMULATE=1 (the smoke test) turns everything on.
+const allSimulated = process.env.LANECAST_SIMULATE === '1';
 const send = (channel, ...args) => { if (win && !win.isDestroyed()) win.webContents.send(channel, ...args); };
-
-// media://sim serves the chosen photo or video to the window, and nothing else.
-protocol.registerSchemesAsPrivileged([{ scheme: 'media', privileges: { stream: true, supportFetchAPI: true, secure: true } }]);
 
 function createWindow() {
     win = new BrowserWindow({
@@ -43,7 +42,7 @@ async function setSimulated(part, on) {
     store.set('simulate', { ...simulated });
     send('sim:changed', simState());
 }
-const mediaDescriptor = () => simMedia ? { name: simMedia.name, kind: simMedia.kind, url: `media://sim/${encodeURIComponent(simMedia.name)}?v=${simMedia.version}` } : null;
+const mediaDescriptor = () => simMedia ? { name: simMedia.name, kind: simMedia.kind, mime: simMedia.mime, version: simMedia.version } : null;
 const simState = () => ({ ...simulated, media: mediaDescriptor(), ...(serial ? serial.simState() : { event: null, heat: null, running: false, racing: false }) });
 async function setMedia(file) {
     if (!file) simMedia = null;
@@ -51,8 +50,9 @@ async function setMedia(file) {
         const ext = path.extname(file).slice(1).toLowerCase();
         const kind = IMAGES.includes(ext) ? 'image' : VIDEOS.includes(ext) ? 'video' : null;
         if (!kind) throw new Error('Choose a photo (png, jpg, gif, webp) or a video (mp4, mov, m4v, webm)');
-        await fs.access(file);
-        simMedia = { path: file, name: path.basename(file), kind, version: Date.now() };
+        const stat = await fs.stat(file);
+        if (stat.size > MEDIA_LIMIT) throw new Error('That file is over 500 MB; a shorter clip, please');
+        simMedia = { path: file, name: path.basename(file), kind, mime: MIME[ext], version: Date.now() };
     }
     store.set('simMedia', simMedia ? { path: simMedia.path } : null);
     send('sim:changed', simState());
@@ -64,11 +64,6 @@ app.whenReady().then(async () => {
     const saved = store.get('simulate', {});
     for (const p of PARTS) simulated[p] = allSimulated || !!(saved && saved[p]);
     try { const m = store.get('simMedia'); if (m && m.path) await setMedia(m.path); } catch (e) { simMedia = null; }
-    protocol.handle('media', request => {
-        const url = new URL(request.url);
-        if (!simMedia || url.hostname !== 'sim') return new Response('', { status: 404 });
-        return net.fetch(pathToFileURL(simMedia.path).href, { headers: request.headers });
-    });
     serial = new SerialRoles({ simulated: { timer: simulated.timer }, onData: (role, bytes) => send('serial:data', role, bytes), onState: (role, state) => send('serial:state', role, state) });
     relay = new Relay({ port: Number(store.get('relayPort', 8080)) || 8080, onStatus: status => send('relay:status', status) });
     relay.start();
@@ -107,6 +102,8 @@ ipcMain.handle('sim:chooseMedia', async () => {
     return mediaDescriptor();
 });
 ipcMain.handle('sim:clearMedia', async () => { await setMedia(null); return null; });
+/** The chosen photo or video itself, for the window to draw: { bytes, mime }. Only ever the file chosen through the dialog. */
+ipcMain.handle('sim:mediaBytes', async () => simMedia ? { bytes: new Uint8Array(await fs.readFile(simMedia.path)), mime: simMedia.mime, version: simMedia.version } : null);
 ipcMain.handle('relay:status', () => relay.status());
 ipcMain.on('relay:send', (event, text) => relay.broadcast(text));
 ipcMain.handle('cameras:status', () => cameras.state());
