@@ -26,15 +26,15 @@ Lanecast reads the timing console and HY-TEK Meet Manager over serial, will take
 
 ## What it does today
 
-Five tabs across the top. Each tab's dot turns green when that part is ready to go, and stays quiet otherwise. The Timer, Events and Cameras tabs each have their own **Simulate** switch, so you can run a real timer against a made-up Meet Manager, or a real camera against a made-up race; whatever is simulated wears a *Sim* badge on its tab (and on Stream, which shows the lot). The Stream tab's switch simulates everything at once, for learning the app on the kitchen table.
+Five tabs across the top. Each tab's dot turns green when that part is ready to go, and stays quiet otherwise. The Timer, Events and Cameras tabs each have their own **Simulate** switch: flip one and that tab's real controls make way for the simulation's, and the tab wears a *Sim* badge (Stream wears one whenever anything under it is simulated). Any mix works: a real timer against made-up start lists, a photo of your pool against a made-up race.
 
-| Tab | What it does | Green when |
-| --- | --- | --- |
-| **Stream** | The program, near full screen: the chosen camera under the lower third (event, heat, title, clock, lanes). **Go Live** will send it to YouTube (not built yet); **Configure** holds the program camera, the overlay feed (a WebSocket server on port 8080 inside the app; every scoreboard change goes to every overlay connected) and, later, the stream key. In simulation, controls under the program pick the event and heat and start and stop the race. | the program has a picture |
-| **Timer** | Pick the serial port the console's scoreboard output is on and press Connect. Shows the running clock, event/heat, race state and every lane. | the console's clock is arriving |
-| **Events** | Pick the port on Meet Manager's scoreboard link and press Connect. Start lists accumulate as Meet Manager sends them and are kept between runs. Load reads Meet Manager's `.scb` export files, Save writes them back out, and the browser steps through events and heats. | start lists are in hand |
-| **Cameras** | Add a camera by its RTSP address and watch it live in the window. The pictures come through [go2rtc](https://github.com/AlexxIT/go2rtc), which the app runs beside itself; nothing else to install. | a camera's picture is arriving |
-| **Theme** | Not built yet. | — |
+| Tab | What it does | Simulated | Green when |
+| --- | --- | --- | --- |
+| **Stream** | The program, near full screen: the chosen camera under the lower third (event, heat, title, clock, lanes). **Go Live** will send it to YouTube (not built yet); **Configure** holds the program camera, the overlay feed (a WebSocket server on port 8080 inside the app; every scoreboard change goes to every overlay connected) and, later, the stream key. | Cannot be: it is the composite of the others | the program has a picture |
+| **Timer** | Pick the serial port the console's scoreboard output is on and press Connect. Shows the running clock, event/heat, race state and every lane. | A pretend console. Step the event and heat through the start lists loaded, **Race this heat**, or **Run the meet**: lineup, race with splits, results, next heat, through every event, round and round. | the console's clock is arriving |
+| **Events** | Pick the port on Meet Manager's scoreboard link and press Connect. Start lists accumulate as Meet Manager sends them and are kept between runs. Load reads Meet Manager's `.scb` export files, Save writes them back out, and the browser steps through events and heats. | No port. **Fetch simulated events** makes a dozen events with made-up swimmers, mostly 25s, 50s and 100s (nobody wants to test a simulated 500); Load still works. Simulated start lists are kept apart from real ones. | start lists are in hand |
+| **Cameras** | Add a camera by its RTSP address and watch it live in the window. The pictures come through [go2rtc](https://github.com/AlexxIT/go2rtc), which the app runs beside itself; nothing else to install. | A photo or video taken from where the camera will stand, so the overlays can be judged against the real view; a drawn pool until you choose one. | a camera's picture is arriving |
+| **Theme** | Not built yet. | Cannot be: nothing external feeds it | — |
 
 No baud rates or parity to set: each link has one correct setting and the app uses it. A port that was connected when the app closed is reconnected at launch; a port that drops out is reopened when it comes back.
 
@@ -47,13 +47,13 @@ npm install
 npm start
 ```
 
-Without hardware, flip the **Simulate all** switch on the Stream tab (or the part you are missing on its own tab), or start with everything simulated:
+Without hardware, flip the **Simulate** switch on each tab you are missing, or start with everything simulated:
 
 ```bash
 npm run simulate
 ```
 
-Everything shown then comes from the simulator, nothing from a real console. If `ffmpeg` is on your PATH, a test-pattern camera appears too.
+Everything shown then comes from the simulator, nothing from a real console.
 
 To work on the look of the window without launching Electron, serve the folder and open the page in a browser; `mock.js` stands in for the app's bridge with the same simulated meet and a drawn camera:
 

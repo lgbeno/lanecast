@@ -8,7 +8,7 @@ The channel and digit mapping of the timing console's scoreboard output in `src/
 
 Lanecast runs [go2rtc](https://github.com/AlexxIT/go2rtc) beside itself to take camera streams and hand them to the window over WebRTC. The binary is fetched at install time by `scripts/fetch-go2rtc.js` and shipped inside the installers. go2rtc is published under the MIT License, Copyright (c) 2022 Alexey Khit.
 
-ffmpeg is not bundled. If one is on the PATH, go2rtc uses it for the test-pattern camera and for cameras that need transcoding.
+ffmpeg is not bundled. If one is on the PATH, go2rtc uses it for cameras that need transcoding.
 
 ## Runtime dependencies
 

@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self' http://127.0.0.1:*; media-src 'self' blob:">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self'; img-src 'self' data: blob: media:; connect-src 'self' http://127.0.0.1:*; media-src 'self' blob: media:">
 <title>Lanecast</title>
 <link rel="stylesheet" href="style.css">
 <script defer src="../protocol/cts.js"></script><script defer src="../protocol/genser.js"></script><script defer src="../protocol/packet.js"></script><script defer src="../protocol/simulator.js"></script>
@@ -32,15 +32,6 @@
 <div class="program-bar">
 <button id="goLive" class="primary live">Go Live</button><button id="configure">Configure</button>
 <span id="programStatus" class="small">Not streaming</span>
-<div id="simControls" class="sim-controls" hidden>
-<span class="eyebrow">SIM</span>
-<div class="stepper"><button id="simEventDown" class="step" type="button" title="Previous event">−</button><input id="simEventNo" type="number" min="1" max="999" aria-label="Event"><button id="simEventUp" class="step" type="button" title="Next event">+</button></div>
-<span class="small">event</span>
-<div class="stepper"><button id="simHeatDown" class="step" type="button" title="Previous heat">−</button><input id="simHeatNo" type="number" min="1" max="99" aria-label="Heat"><button id="simHeatUp" class="step" type="button" title="Next heat">+</button></div>
-<span class="small">heat</span>
-<button id="simRace" class="latch" type="button" aria-pressed="false">Race</button>
-</div>
-<label class="switch"><input type="checkbox" class="simToggle" data-part="all"><span></span>Simulate all</label>
 </div>
 </div>
 <dialog id="configureDialog" class="wide"><form method="dialog"><h3>Configure the stream</h3>
@@ -57,10 +48,19 @@
 <section id="timer" role="tabpanel" aria-labelledby="tab-timer" hidden>
 <div class="panel-head"><h2>Timer</h2><label class="switch"><input type="checkbox" class="simToggle" data-part="timer"><span></span>Simulate the timer</label></div>
 <div class="columns">
-<article><h2>Timing console</h2>
-<div class="actions"><select id="timerPort" aria-label="Timer port"></select><button id="timerConnect" class="primary">Connect</button><button id="timerDisconnect" disabled>Disconnect</button></div>
+<article><h2 id="timerHead">Timing console</h2>
+<div class="actions when-real"><select id="timerPort" aria-label="Timer port"></select><button id="timerConnect" class="primary">Connect</button><button id="timerDisconnect" disabled>Disconnect</button></div>
 <p id="timerStatus" class="small">Not connected.</p>
-<div class="readout"><div><p class="eyebrow">CLOCK</p><strong id="clock">—:—.—</strong></div><div><p class="eyebrow">EVENT / HEAT</p><strong id="event">— / —</strong></div><div><p class="eyebrow">STATE</p><span id="raceState" class="badge">UNKNOWN</span></div></div></article>
+<div class="readout"><div><p class="eyebrow">CLOCK</p><strong id="clock">—:—.—</strong></div><div><p class="eyebrow">EVENT / HEAT</p><strong id="event">— / —</strong></div><div><p class="eyebrow">STATE</p><span id="raceState" class="badge">UNKNOWN</span></div></div>
+<div id="timerSim" class="sim-panel" hidden>
+<p class="eyebrow">SIMULATED CONSOLE</p>
+<div class="actions">
+<div class="stepper"><button id="simEventDown" class="step" type="button" title="Previous event">−</button><input id="simEventNo" type="number" min="1" max="999" aria-label="Event"><button id="simEventUp" class="step" type="button" title="Next event">+</button></div><span class="small">event</span>
+<div class="stepper"><button id="simHeatDown" class="step" type="button" title="Previous heat">−</button><input id="simHeatNo" type="number" min="1" max="99" aria-label="Heat"><button id="simHeatUp" class="step" type="button" title="Next heat">+</button></div><span class="small">heat</span>
+</div>
+<div class="actions"><button id="simRun" class="latch" type="button" aria-pressed="false" title="Lineup, race, results, next heat, through every event loaded, round and round">Run the meet</button><button id="simRace" class="latch" type="button" aria-pressed="false" title="Start and stop a race on this heat">Race this heat</button></div>
+<p id="simNote" class="small"></p>
+</div></article>
 <article><h2>Lanes</h2>
 <table class="data"><thead><tr><th>Lane</th><th>Place</th><th>Time</th></tr></thead><tbody id="lanes"></tbody></table></article>
 </div></section>
@@ -68,12 +68,12 @@
 <section id="events" role="tabpanel" aria-labelledby="tab-events" hidden>
 <div class="panel-head"><h2>Events</h2><label class="switch"><input type="checkbox" class="simToggle" data-part="events"><span></span>Simulate Meet Manager</label></div>
 <div class="columns">
-<article><h2>Meet Manager</h2>
-<div class="actions"><select id="meetPort" aria-label="Meet Manager port"></select><button id="meetConnect" class="primary">Connect</button><button id="meetDisconnect" disabled>Disconnect</button></div>
+<article><h2 id="meetHead">Meet Manager</h2>
+<div class="actions when-real"><select id="meetPort" aria-label="Meet Manager port"></select><button id="meetConnect" class="primary">Connect</button><button id="meetDisconnect" disabled>Disconnect</button></div>
 <p id="meetStatus" class="small">Not connected.</p>
 <div class="readout"><div><p class="eyebrow">EVENTS LOADED</p><strong id="eventsLoaded">0</strong><p id="heatsLoaded" class="small">no heats</p></div><div><p class="eyebrow">LAST RECEIVED</p><strong id="lastNo">— / —</strong><p class="small">event / heat</p></div></div>
-<h2 class="later">Start-list files</h2>
-<div class="actions"><button id="loadFiles">Load</button><button id="saveFiles">Save</button><button id="clearRosters">Clear</button><span id="fileStatus" class="small"></span></div></article>
+<h2 class="later">Start lists</h2>
+<div class="actions"><button id="fetchSim" class="primary" hidden>Fetch simulated events</button><button id="loadFiles">Load</button><button id="saveFiles">Save</button><button id="clearRosters">Clear</button><span id="fileStatus" class="small"></span></div></article>
 <article><h2>Start lists</h2>
 <div class="readout"><div><p class="eyebrow">EVENT <span id="storedEvents" class="count"></span></p><div class="stepper"><button id="eventDown" class="step" type="button" title="Previous stored event">−</button><input id="viewEventNo" type="number" min="1" max="999" aria-label="Event"><button id="eventUp" class="step" type="button" title="Next stored event">+</button></div></div>
 <div><p class="eyebrow">HEAT <span id="heatCount" class="count"></span></p><div class="stepper"><button id="heatDown" class="step" type="button" title="Previous heat">−</button><input id="viewHeatNo" type="number" min="1" max="99" aria-label="Heat"><button id="heatUp" class="step" type="button" title="Next heat">+</button><button id="follow" class="latch" type="button" aria-pressed="true" title="Jump to each start list as it arrives">Show latest</button></div></div></div>
@@ -88,11 +88,17 @@
 <p id="engineStatus" class="small">Starting the camera engine…</p>
 <div id="cameraList" class="tiles"></div>
 <p id="noCameras" class="small">No cameras yet. Add one on the right.</p></article>
-<article><h2>Add a camera</h2>
+<div class="stack">
+<article id="camSim" hidden><h2>Simulated camera</h2>
+<p class="small">A photo or video taken from where the camera will stand, so the overlays can be judged against the real view. Without one, a drawn pool stands in.</p>
+<div class="actions"><button id="chooseMedia" class="primary">Choose photo or video…</button><button id="clearMedia">Use the drawn pool</button></div>
+<p id="mediaName" class="small"></p></article>
+<article id="camAdd"><h2>Add a camera</h2>
 <div class="field"><label for="camName">Name</label><input id="camName" placeholder="Pool, wide"></div>
 <div class="field"><label for="camUrl">Address</label><input id="camUrl" placeholder="rtsp://192.168.1.50/1" spellcheck="false"></div>
-<div class="actions"><button id="camAdd" class="primary">Add</button><span id="camAddStatus" class="small"></span></div>
+<div class="actions"><button id="camAddButton" class="primary">Add</button><span id="camAddStatus" class="small"></span></div>
 <p class="small">Most PTZ cameras serve their main stream at <code>rtsp://&lt;camera ip&gt;/1</code>; if the camera asks for a login, write it as <code>rtsp://user:password@ip/1</code>. Set the camera to H.264. An NDI camera's RTSP output works today; NDI itself comes later.</p></article>
+</div>
 </div></section>
 
 <section id="theme" role="tabpanel" aria-labelledby="tab-theme" hidden>

@@ -20,6 +20,10 @@ contextBridge.exposeInMainWorld('lanecast', {
         set: (part, on) => invoke('sim:set', part, on),
         control: (event, heat) => invoke('sim:control', event, heat),
         race: on => invoke('sim:race', on),
+        run: (on, event, heat) => invoke('sim:run', on, event, heat),
+        schedule: meet => invoke('sim:schedule', meet),
+        chooseMedia: () => invoke('sim:chooseMedia'),
+        clearMedia: () => invoke('sim:clearMedia'),
         onChange: callback => on('sim:changed', callback)
     },
     relay: {

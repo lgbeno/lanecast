@@ -56,13 +56,16 @@ class SerialRoles {
         await this.close(role);
         this.simulated[role] = !!on;
     }
-    /** The simulated console by hand: { event, heat, racing } while it is, null while it runs the scripted meet. */
-    simState() { const m = simConsole().manual; return m ? { event: m.event, heat: m.heat, racing: m.racing } : null; }
+    /** The simulated console: where it is and what it is doing: { event, heat, running, racing }. */
+    simState() { return simConsole().status(); }
     simControl(event, heat) { simConsole().control(event, heat); return this.simState(); }
     simRace(on) { simConsole().race(on); return this.simState(); }
+    simRun(on, event, heat) { simConsole().run(on, event, heat); return this.simState(); }
+    /** The meet the simulated console runs: the start lists loaded, in Sim.MEET's shape. */
+    simSchedule(meet) { simConsole().setMeet(Array.isArray(meet) ? meet : []); return this.simState(); }
     /** The ports on offer for a role: the pretend one while that role is simulated, else the machine's. */
     async list(role) {
-        if (this.simulated[role]) return [SIM_PORTS[role === 'meet' ? 1 : 0]];
+        if (role === 'timer' && this.simulated.timer) return [SIM_PORTS[0]];
         const { SerialPort } = require('serialport');
         const ports = await SerialPort.list();
         // USB adapters first; a Mac's Bluetooth and debug ports go to the bottom.
