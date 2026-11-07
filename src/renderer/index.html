@@ -21,6 +21,12 @@
 
 <section id="stream" role="tabpanel" aria-labelledby="tab-stream" hidden>
 <div class="program">
+<details id="simConsole" class="sim-panel" hidden><summary><span class="eyebrow">SIMULATION CONTROL</span><span id="simSummary" class="small"></span></summary>
+<div class="sim-row">
+<div><p class="eyebrow">EVENT</p><div class="stepper"><button id="simEventDown" class="step" type="button" title="Previous event">−</button><input id="simEventNo" type="number" min="1" max="999" aria-label="Event"><button id="simEventUp" class="step" type="button" title="Next event">+</button></div></div>
+<div><p class="eyebrow">HEAT</p><div class="stepper"><button id="simHeatDown" class="step" type="button" title="Previous heat">−</button><input id="simHeatNo" type="number" min="1" max="99" aria-label="Heat"><button id="simHeatUp" class="step" type="button" title="Next heat">+</button></div></div>
+<div><p class="eyebrow">&nbsp;</p><button id="simRun" class="latch" type="button" aria-pressed="false" title="From this event and heat: lineup, race, results, next heat, through every event loaded, round and round">Run</button></div>
+</div></details>
 <div class="stage" id="stage">
 <video id="programVideo" autoplay muted playsinline></video>
 <div class="bug" id="bug" hidden>
@@ -33,14 +39,6 @@
 <button id="goLive" class="primary live">Go Live</button><button id="configure">Configure</button>
 <span id="programStatus" class="small">Not streaming</span>
 </div>
-<details id="simConsole" class="sim-panel" hidden><summary><span class="eyebrow">SIMULATED CONSOLE</span><span id="simSummary" class="small"></span></summary>
-<div class="actions">
-<div class="stepper"><button id="simEventDown" class="step" type="button" title="Previous event">−</button><input id="simEventNo" type="number" min="1" max="999" aria-label="Event"><button id="simEventUp" class="step" type="button" title="Next event">+</button></div><span class="small">event</span>
-<div class="stepper"><button id="simHeatDown" class="step" type="button" title="Previous heat">−</button><input id="simHeatNo" type="number" min="1" max="99" aria-label="Heat"><button id="simHeatUp" class="step" type="button" title="Next heat">+</button></div><span class="small">heat</span>
-</div>
-<div class="actions"><button id="simRun" class="latch" type="button" aria-pressed="false" title="Lineup, race, results, next heat, through every event loaded, round and round">Run the meet</button><button id="simRace" class="latch" type="button" aria-pressed="false" title="Start and stop a race on this heat">Race this heat</button></div>
-<p id="simNote" class="small"></p>
-</details>
 </div>
 <dialog id="configureDialog" class="wide"><form method="dialog"><h3>Configure the stream</h3>
 <div class="field"><label for="programCamera">Program camera</label><select id="programCamera"></select></div>

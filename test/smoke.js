@@ -49,14 +49,13 @@ app.on('browser-window-created', (event, win) => {
         const events = await js(`({ loaded: Number(${text('eventsLoaded')}), status: ${text('fileStatus')}, ready: ${dots} })`);
         check(events.loaded === 12 && events.ready.events, `fetched 12 simulated events: ${events.status}`);
 
-        // Timer: step to the second loaded event, race it, then run the meet.
+        // Simulation control, above the program: queue the second loaded event, then Run.
         await click('simEventUp', 600);
-        await click('simRace', 2500);
-        const raced = await js(`({ event: ${text('event')}, state: ${text('raceState')}, clock: ${text('clock')}, note: ${text('simNote')}, racing: document.getElementById('simRace').getAttribute('aria-pressed') })`);
-        check(raced.event === '2 / 1' && raced.state === 'RUNNING' && raced.racing === 'true', `raced event 2 heat 1 by hand: ${raced.event} ${raced.state} ${raced.clock}`);
-        await click('simRun', 1500);
-        const running = await js(`({ running: document.getElementById('simRun').getAttribute('aria-pressed'), racing: document.getElementById('simRace').getAttribute('aria-pressed'), summary: ${text('simSummary')}, clock: ${text('clock')} })`);
-        check(running.running === 'true' && running.racing === 'false' && /^Running the meet through 12 loaded events/.test(running.summary), `running the meet: ${running.note}`);
+        const queued = await js(`({ event: ${text('event')}, summary: ${text('simSummary')}, running: document.getElementById('simRun').getAttribute('aria-pressed') })`);
+        check(queued.event === '2 / 1' && /^Queued · event 2 heat 1$/.test(queued.summary) && queued.running === 'false', `event 2 heat 1 queued: ${queued.summary}`);
+        await click('simRun', 9500);                                                   // through the 8 s lineup into the race
+        const running = await js(`({ running: document.getElementById('simRun').getAttribute('aria-pressed'), summary: ${text('simSummary')}, state: ${text('raceState')}, event: ${text('event')}, above: document.getElementById('simConsole').nextElementSibling.id })`);
+        check(running.running === 'true' && /^Running · event 2 heat 1 of 12 loaded events/.test(running.summary) && running.state === 'RUNNING' && running.above === 'stage', `Run from the queued heat, racing: ${running.summary} · ${running.state}`);
         await wait(4000);
         const r = await js(`({ timer: ${text('timerStatus')}, clock: ${text('clock')}, event: ${text('event')}, relay: ${text('relayStatus')}, clients: ${text('clients')}, packets: ${text('packets')}, ready: ${dots} })`);
         check(/^\d:\d\d\.\d$/.test(r.clock) && r.ready.timer, 'clock shows a time and the Timer dot is green: ' + r.clock);
