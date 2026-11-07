@@ -15,13 +15,13 @@
     'use strict';
     // A meet: [{ event, title, gender, seconds, heats: [[[name, team] | null, ...ten lanes], ...] }]
     const MEET = [
-        { event: 1, title: 'Girls 11-12 50 Free', gender: 'G', seconds: 28, heats: [
+        { event: 1, title: 'Girls 11-12 50 Free', gender: 'G', seconds: 16, heats: [
             [null, ['Marlowe, Tessa', 'DOLF'], ['Okafor, Nia', 'RAYS'], ['Lindqvist, Freya', 'DOLF'], ['Castellano, Mia', 'WAVE'], ['Brightwater, June', 'RAYS'], ['Hale, Rowan', 'WAVE'], null],
             [['Pemberton, Ivy', 'OTTR'], ['Nakagawa, Emi', 'WAVE'], ['Featherstonehaugh, Josephine', 'DOLF'], ['Abernathy, Cleo', 'RAYS'], ['Quill, Harper', 'OTTR'], ['Vasquez, Lucia', 'DOLF'], ['Thorne, Maeve', 'RAYS'], ['Underhill, Posy', 'WAVE']] ] },
-        { event: 2, title: 'Boys 11-12 50 Back', gender: 'B', seconds: 33, heats: [
+        { event: 2, title: 'Boys 11-12 50 Back', gender: 'B', seconds: 18, heats: [
             [null, null, ['Whitlock, Ezra', 'RAYS'], ['Banerjee, Kiran', 'OTTR'], ['Sorensen, Leif', 'WAVE'], ['Dunmore, Felix', 'DOLF'], null, null],
             [['Ashworth, Theo', 'DOLF'], ['Kowalczyk, Jan', 'RAYS'], ['Montague, Silas', 'WAVE'], ['Iwu, Chidi', 'OTTR'], ['Fairbanks, Otis', 'RAYS'], ['Roswell, Jude', 'DOLF'], ['Elkins, Wade', 'OTTR'], null] ] },
-        { event: 3, title: 'Mixed 10&U 100 Free Relay', gender: 'X', seconds: 64, heats: [
+        { event: 3, title: 'Mixed 10&U 100 Free Relay', gender: 'X', seconds: 24, heats: [
             [null, ['Relay-B', 'WAVE'], ['Relay-A', 'RAYS'], ['Relay-A', 'DOLF'], ['Relay-A', 'WAVE'], ['Relay-A', 'OTTR'], ['Relay-B', 'DOLF'], null] ] }
     ];
     const LANES = 10;
@@ -40,18 +40,18 @@
             return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
         };
     }
-    /** A winning time, roughly, from an event title: the distance in it and the stroke. */
+    /** A winning time for a simulated race, from the distance in the event title: 15 s for a 25 or 50, 20 s for a
+     *  100, 30 s for anything 200 and up. Nobody watching a simulation wants to sit through real race times. */
     function secondsFor(title) {
         // The distance is a number that is not part of an age range such as 13-14 or 9-10.
         const numbers = Array.from(String(title || '').matchAll(/(?<![\d-])(\d{2,4})(?![\d-])/g), m => Number(m[1]));
         const distance = numbers.find(n => n >= 25 && n <= 1650) || 50;
-        const stroke = /breast/i.test(title) ? 1.3 : /fly/i.test(title) ? 1.1 : /back/i.test(title) || /\bim\b|medley/i.test(title) ? 1.15 : 1;
-        return Math.round(distance * 0.62 * stroke);
+        return Math.min(30, Math.max(15, Math.round(10 + distance / 10)));
     }
     /** Each swimmer's split, final time and place for one heat: the meet's entries, or six made-up swimmers. */
     function planLanes(meet, event, heat) {
         const e = meet.find(m => m.event === event), entries = e?.heats[heat - 1] || [null, 1, 1, 1, 1, 1, 1, null];
-        const seconds = e?.seconds || secondsFor(e?.title) || 30, random = rng(event * 100 + heat);
+        const seconds = e?.seconds || secondsFor(e?.title), random = rng(event * 100 + heat);
         const lanes = Array.from({ length: LANES }, (_, i) => {
             if (!entries[i]) return null;
             const final = Math.round(seconds * 100 * (1 + random() * 0.18));
