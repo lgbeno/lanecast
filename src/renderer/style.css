@@ -18,6 +18,8 @@ p{color:var(--muted);margin:8px 0 16px}
 .dot{width:9px;height:9px;border-radius:50%;border:1.5px solid #3a4f63;background:transparent;transition:background .3s,border-color .3s,box-shadow .3s}
 .dot[data-ready=true]{background:var(--ready);border-color:var(--ready);box-shadow:0 0 8px rgba(74,222,128,.55)}
 .sim-badge{font:700 9px/1 system-ui;letter-spacing:1px;text-transform:uppercase;color:#1a0f2e;background:var(--sim);border-radius:4px;padding:3px 5px}
+/* Stream is idle or live, nothing else: the badge shows only on air. */
+.live-badge{font:800 9px/1 system-ui;letter-spacing:1px;text-transform:uppercase;color:#fff;background:#e5484d;border-radius:4px;padding:3px 6px;box-shadow:0 0 8px rgba(229,72,77,.6)}
 
 /* The simulation switch, one in every tab. */
 .switch{display:inline-flex;align-items:center;gap:9px;font-size:13px;color:var(--muted);cursor:pointer}

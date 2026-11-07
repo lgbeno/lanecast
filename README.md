@@ -26,7 +26,7 @@ Lanecast reads the timing console and HY-TEK Meet Manager over serial, will take
 
 ## What it does today
 
-Five tabs across the top. Each tab's dot turns green when that part is ready to go, and stays quiet otherwise. The Timer, Events and Cameras tabs each have their own **Simulate** switch: flip one and that tab's real controls make way for the simulation's, and the tab wears a *Sim* badge (Stream wears one whenever anything under it is simulated). Any mix works: a real timer against made-up start lists, a photo of your pool against a made-up race.
+Five tabs across the top. Each tab's dot turns green when that part is ready to go, and stays quiet otherwise. The Timer, Events and Cameras tabs each have their own **Simulate** switch: flip one and that tab's real controls make way for the simulation's, and the tab wears a *Sim* badge. Stream never does: it is idle or **Live**, nothing else. Any mix works: a real timer against made-up start lists, a photo of your pool against a made-up race.
 
 | Tab | What it does | Simulated | Green when |
 | --- | --- | --- | --- |
