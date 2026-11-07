@@ -22,7 +22,18 @@ p{color:var(--muted);margin:8px 0 16px}
 [role=tabpanel]{animation:fade .18s ease-out}
 @keyframes fade{from{opacity:0;transform:translateY(3px)}to{opacity:1;transform:none}}
 .columns{display:grid;grid-template-columns:1fr 1fr;gap:18px;align-items:start}
-@media(max-width:860px){.columns{grid-template-columns:1fr}}
+.columns.wide-left{grid-template-columns:2fr 1fr}
+@media(max-width:860px){.columns,.columns.wide-left{grid-template-columns:1fr}}
+.field{margin:12px 0}.field label{display:block;font-size:12px;color:var(--muted);margin-bottom:4px}
+.field input{width:100%;background:#0c1620;color:var(--text);border:1px solid #3a4f63;border-radius:5px;padding:9px;font:inherit;font-size:14px;-webkit-user-select:text;user-select:text}
+code{font:13px ui-monospace,monospace;color:var(--text)}
+.tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:14px;margin-top:14px}
+.tile{margin:0;background:#0c1620;border:1px solid var(--line);border-radius:10px;overflow:hidden}
+.tile video{display:block;width:100%;aspect-ratio:16/9;background:#060a0f;object-fit:contain}
+.tile figcaption{display:flex;align-items:center;gap:10px;padding:10px 12px}
+.tile figcaption strong{font-size:14px}.tile figcaption .small{flex:1;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tile .live{color:var(--ready)}
+.quiet{background:none;border-color:transparent;color:var(--muted);padding:8px 10px}.quiet:hover{color:var(--text);filter:none}
 article{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:24px;min-width:0}
 article.soon{opacity:.6}
 .actions{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:12px 0}

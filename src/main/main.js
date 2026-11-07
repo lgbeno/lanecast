@@ -10,9 +10,10 @@ const fs = require('node:fs/promises');
 const { SerialRoles } = require('./serial');
 const { Relay } = require('./relay');
 const { Store } = require('./store');
+const { CameraEngine } = require('./cameras');
 
 const simulated = process.argv.includes('--simulate') || process.env.LANECAST_SIMULATE === '1';
-let win = null, serial = null, relay = null, store = null;
+let win = null, serial = null, relay = null, store = null, cameras = null;
 const send = (channel, ...args) => { if (win && !win.isDestroyed()) win.webContents.send(channel, ...args); };
 
 function createWindow() {
@@ -31,11 +32,20 @@ app.whenReady().then(async () => {
     serial = new SerialRoles({ simulated, onData: (role, bytes) => send('serial:data', role, bytes), onState: (role, state) => send('serial:state', role, state) });
     relay = new Relay({ port: Number(store.get('relayPort', 8080)) || 8080, onStatus: status => send('relay:status', status) });
     relay.start();
+    cameras = new CameraEngine({
+        packaged: app.isPackaged, dataDir: app.getPath('userData'), cameras: store.get('cameras', []),
+        onChange: list => store.set('cameras', list), onStatus: state => send('cameras:status', state)
+    });
+    // Without hardware, a test pattern stands in for a camera, if ffmpeg is about to draw it.
+    if (simulated && cameras.ffmpeg && !cameras.cameras.length) cameras.cameras.push({ id: 'cam-pattern', name: 'Test pattern', url: 'ffmpeg:virtual?video=testsrc&size=1280x720#video=h264' });
+    cameras.start();
     createWindow();
     app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
 });
 app.on('window-all-closed', () => app.quit());
-app.on('before-quit', () => { if (serial) serial.closeAll(); if (relay) relay.stop(); if (store) store.flush(); });
+app.on('before-quit', () => { if (serial) serial.closeAll(); if (relay) relay.stop(); if (cameras) cameras.stop(); if (store) store.flush(); });
+// However the process ends, go2rtc must not outlive it.
+process.on('exit', () => { if (cameras) cameras.stop(); });
 
 // ---- what the window may ask for ---------------------------------------------------------
 ipcMain.handle('app:info', () => ({ version: app.getVersion(), simulated, platform: process.platform }));
@@ -45,6 +55,10 @@ ipcMain.handle('serial:close', (event, role) => serial.close(role));
 ipcMain.handle('serial:state', (event, role) => serial.state(role));
 ipcMain.handle('relay:status', () => relay.status());
 ipcMain.on('relay:send', (event, text) => relay.broadcast(text));
+ipcMain.handle('cameras:status', () => cameras.state());
+ipcMain.handle('cameras:list', () => cameras.list());
+ipcMain.handle('cameras:add', (event, camera) => cameras.add(camera || {}));
+ipcMain.handle('cameras:remove', (event, id) => cameras.remove(String(id)));
 ipcMain.handle('store:get', (event, key) => store.get(key));
 ipcMain.handle('store:set', (event, key, value) => { store.set(key, value); });
 

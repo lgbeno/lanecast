@@ -14,7 +14,8 @@
     "simulate": "electron . --simulate",
     "test": "node test/run.js",
     "dist": "electron-builder --publish never",
-    "postinstall": "electron-builder install-app-deps"
+    "fetch-go2rtc": "node scripts/fetch-go2rtc.js",
+    "postinstall": "electron-builder install-app-deps && node scripts/fetch-go2rtc.js"
   },
   "build": {
     "appId": "live.lanecast.app",
@@ -25,6 +26,9 @@
       "package.json"
     ],
     "icon": "build/icon.png",
+    "extraResources": [
+      { "from": "vendor/go2rtc/${os}-${arch}", "to": "go2rtc" }
+    ],
     "directories": {
       "output": "dist"
     },
