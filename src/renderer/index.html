@@ -40,7 +40,7 @@
 <span class="small">heat</span>
 <button id="simRace" class="latch" type="button" aria-pressed="false">Race</button>
 </div>
-<label class="switch"><input type="checkbox" class="simToggle"><span></span>Simulation</label>
+<label class="switch"><input type="checkbox" class="simToggle" data-part="all"><span></span>Simulate all</label>
 </div>
 </div>
 <dialog id="configureDialog" class="wide"><form method="dialog"><h3>Configure the stream</h3>
@@ -55,7 +55,7 @@
 </section>
 
 <section id="timer" role="tabpanel" aria-labelledby="tab-timer" hidden>
-<div class="panel-head"><h2>Timer</h2><label class="switch"><input type="checkbox" class="simToggle"><span></span>Simulation</label></div>
+<div class="panel-head"><h2>Timer</h2><label class="switch"><input type="checkbox" class="simToggle" data-part="timer"><span></span>Simulate the timer</label></div>
 <div class="columns">
 <article><h2>Timing console</h2>
 <div class="actions"><select id="timerPort" aria-label="Timer port"></select><button id="timerConnect" class="primary">Connect</button><button id="timerDisconnect" disabled>Disconnect</button></div>
@@ -66,7 +66,7 @@
 </div></section>
 
 <section id="events" role="tabpanel" aria-labelledby="tab-events" hidden>
-<div class="panel-head"><h2>Events</h2><label class="switch"><input type="checkbox" class="simToggle"><span></span>Simulation</label></div>
+<div class="panel-head"><h2>Events</h2><label class="switch"><input type="checkbox" class="simToggle" data-part="events"><span></span>Simulate Meet Manager</label></div>
 <div class="columns">
 <article><h2>Meet Manager</h2>
 <div class="actions"><select id="meetPort" aria-label="Meet Manager port"></select><button id="meetConnect" class="primary">Connect</button><button id="meetDisconnect" disabled>Disconnect</button></div>
@@ -82,7 +82,7 @@
 </div></section>
 
 <section id="cameras" role="tabpanel" aria-labelledby="tab-cameras" hidden>
-<div class="panel-head"><h2>Cameras</h2><label class="switch"><input type="checkbox" class="simToggle"><span></span>Simulation</label></div>
+<div class="panel-head"><h2>Cameras</h2><label class="switch"><input type="checkbox" class="simToggle" data-part="cameras"><span></span>Simulate a camera</label></div>
 <div class="columns wide-left">
 <article><h2>Cameras</h2>
 <p id="engineStatus" class="small">Starting the camera engine…</p>
@@ -96,7 +96,7 @@
 </div></section>
 
 <section id="theme" role="tabpanel" aria-labelledby="tab-theme" hidden>
-<div class="panel-head"><h2>Theme</h2><label class="switch"><input type="checkbox" class="simToggle"><span></span>Simulation</label></div>
+<div class="panel-head"><h2>Theme</h2></div>
 <article class="soon"><h2>Theme</h2><p class="small">Not built yet. The look of the overlays: colours, team logos, fonts, which graphics show and when.</p></article>
 </section>
 

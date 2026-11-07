@@ -14,8 +14,11 @@ const { Store } = require('./store');
 const { CameraEngine } = require('./cameras');
 
 const PATTERN = { id: 'cam-pattern', name: 'Test pattern', url: 'ffmpeg:virtual?video=testsrc&size=1280x720#video=h264' };
+const PARTS = ['timer', 'events', 'cameras'];
 let win = null, serial = null, relay = null, store = null, cameras = null;
-let simulated = process.argv.includes('--simulate') || process.env.LANECAST_SIMULATE === '1';
+// Each part can be simulated on its own: the timer, the meet data, the cameras.
+const simulated = { timer: false, events: false, cameras: false };
+const allSimulated = process.argv.includes('--simulate') || process.env.LANECAST_SIMULATE === '1';
 const send = (channel, ...args) => { if (win && !win.isDestroyed()) win.webContents.send(channel, ...args); };
 
 function createWindow() {
@@ -27,27 +30,33 @@ function createWindow() {
     win.on('closed', () => { win = null; });
 }
 
-/** Simulation is a switch: the made-up meet's ports instead of real ones, and a test-pattern camera when ffmpeg can draw one. */
-async function setSimulated(on) {
+/** Simulate one part, or 'all': the made-up meet's port instead of a real one, or a test-pattern camera when ffmpeg can draw one. */
+async function setSimulated(part, on) {
     on = !!on;
-    if (on !== simulated) { simulated = on; store.set('simulate', on); await serial.setSimulated(on); }
-    if (on && cameras.ffmpeg) await cameras.put(PATTERN); else await cameras.remove(PATTERN.id);
+    for (const p of part === 'all' ? PARTS : PARTS.includes(part) ? [part] : []) {
+        simulated[p] = on;
+        if (p === 'timer') await serial.setSimulated('timer', on);
+        if (p === 'events') await serial.setSimulated('meet', on);
+        if (p === 'cameras') { if (on && cameras.ffmpeg) await cameras.put(PATTERN); else await cameras.remove(PATTERN.id); }
+    }
+    store.set('simulate', { ...simulated });
     send('sim:changed', simState());
 }
-const simState = () => ({ on: simulated, ffmpeg: !!cameras?.ffmpeg, ...(serial?.simState() || { event: null, heat: null, racing: false }) });
+const simState = () => ({ ...simulated, ffmpeg: !!cameras?.ffmpeg, ...(serial?.simState() || { event: null, heat: null, racing: false }) });
 
 app.whenReady().then(async () => {
     store = new Store(path.join(app.getPath('userData'), 'lanecast.json'));
     await store.load();
-    if (!process.argv.includes('--simulate') && !process.env.LANECAST_SIMULATE) simulated = !!store.get('simulate', false);
-    serial = new SerialRoles({ simulated, onData: (role, bytes) => send('serial:data', role, bytes), onState: (role, state) => send('serial:state', role, state) });
+    const saved = store.get('simulate', {});
+    for (const p of PARTS) simulated[p] = allSimulated || !!(saved && saved[p]);
+    serial = new SerialRoles({ simulated: { timer: simulated.timer, meet: simulated.events }, onData: (role, bytes) => send('serial:data', role, bytes), onState: (role, state) => send('serial:state', role, state) });
     relay = new Relay({ port: Number(store.get('relayPort', 8080)) || 8080, onStatus: status => send('relay:status', status) });
     relay.start();
     cameras = new CameraEngine({
         packaged: app.isPackaged, dataDir: app.getPath('userData'), cameras: store.get('cameras', []),
         onChange: list => store.set('cameras', list), onStatus: state => send('cameras:status', state)
     });
-    await setSimulated(simulated);
+    await setSimulated('cameras', simulated.cameras);
     cameras.start();
     createWindow();
     app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
@@ -58,13 +67,13 @@ app.on('before-quit', () => { if (serial) serial.closeAll(); if (relay) relay.st
 process.on('exit', () => { if (cameras) cameras.stop(); });
 
 // ---- what the window may ask for ---------------------------------------------------------
-ipcMain.handle('app:info', () => ({ version: app.getVersion(), simulated, platform: process.platform }));
-ipcMain.handle('serial:list', () => serial.list());
+ipcMain.handle('app:info', () => ({ version: app.getVersion(), platform: process.platform }));
+ipcMain.handle('serial:list', (event, role) => serial.list(role));
 ipcMain.handle('serial:open', (event, role, portPath) => serial.open(role, portPath));
 ipcMain.handle('serial:close', (event, role) => serial.close(role));
 ipcMain.handle('serial:state', (event, role) => serial.state(role));
 ipcMain.handle('sim:state', () => simState());
-ipcMain.handle('sim:set', (event, on) => setSimulated(on));
+ipcMain.handle('sim:set', (event, part, on) => setSimulated(String(part), on));
 ipcMain.handle('sim:control', (event, e, h) => { serial.simControl(Number(e), Number(h)); return simState(); });
 ipcMain.handle('sim:race', (event, on) => { serial.simRace(!!on); return simState(); });
 ipcMain.handle('relay:status', () => relay.status());

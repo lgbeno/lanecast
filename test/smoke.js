@@ -71,13 +71,19 @@ app.on('browser-window-created', (event, win) => {
             const program = await win.webContents.executeJavaScript(`({ width: document.getElementById('programVideo').videoWidth, note: document.getElementById('stageNote').hidden, bug: !document.getElementById('bug').hidden, status: ${text('programStatus')}, ready: ${dots} })`);
             check(program.width > 0 && program.note && program.bug && program.ready.stream, `program shows the camera under the lower third: ${program.width}px, ${program.status}`);
         }
-        // Simulation off: the pretend ports close and the badges go; on again: back as before.
+        // Simulation is per part. All off: the pretend ports close and the badges go.
+        const badgesShown = `[...document.querySelectorAll('.sim-badge')].filter(b => !b.hidden).map(b => b.parentElement.id.slice(4)).join(',')`;
         await win.webContents.executeJavaScript(`document.querySelector('#stream .simToggle').click()`); await wait(1500);
-        const off = await win.webContents.executeJavaScript(`({ timer: ${text('timerStatus')}, badges: [...document.querySelectorAll('.sim-badge')].filter(b => !b.hidden).length, controls: document.getElementById('simControls').hidden, checked: document.querySelector('#timer .simToggle').checked })`);
-        check(off.timer === 'Not connected.' && off.badges === 0 && off.controls && !off.checked, `simulation off closes the ports and clears the badges: ${JSON.stringify(off)}`);
+        const off = await win.webContents.executeJavaScript(`({ timer: ${text('timerStatus')}, meet: ${text('meetStatus')}, badges: ${badgesShown}, controls: document.getElementById('simControls').hidden, checked: document.querySelector('#timer .simToggle').checked })`);
+        check(off.timer === 'Not connected.' && off.meet === 'Not connected.' && off.badges === '' && off.controls && !off.checked, `all off closes both ports and clears the badges: ${JSON.stringify(off)}`);
+        // Meet Manager alone: its port connects, the timer stays off, Events and Stream wear the badge.
         await win.webContents.executeJavaScript(`document.querySelector('#events .simToggle').click()`); await wait(2500);
-        const on = await win.webContents.executeJavaScript(`({ timer: ${text('timerStatus')}, badges: [...document.querySelectorAll('.sim-badge')].filter(b => !b.hidden).length })`);
-        check(on.timer === 'Connected · receiving' && on.badges === 4, `simulation on again reconnects: ${JSON.stringify(on)}`);
+        const events = await win.webContents.executeJavaScript(`({ timer: ${text('timerStatus')}, meet: ${text('meetStatus')}, badges: ${badgesShown}, all: document.querySelector('#stream .simToggle').indeterminate })`);
+        check(events.timer === 'Not connected.' && /start list/.test(events.meet) && events.badges === 'stream,events' && events.all, `Meet Manager simulated on its own: ${JSON.stringify(events)}`);
+        // Simulate all again from the Stream tab.
+        await win.webContents.executeJavaScript(`document.querySelector('#stream .simToggle').click()`); await wait(2500);
+        const on = await win.webContents.executeJavaScript(`({ timer: ${text('timerStatus')}, badges: ${badgesShown} })`);
+        check(on.timer === 'Connected · receiving' && on.badges === 'stream,timer,events,cameras', `all on again reconnects: ${JSON.stringify(on)}`);
         if (shot) {
             // One screenshot per tab: shot.png, shot-timer.png, shot-events.png …
             for (const t of ['stream', 'timer', 'events', 'cameras']) {

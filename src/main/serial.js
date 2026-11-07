@@ -44,23 +44,25 @@ const describe = p => [p.path, p.manufacturer, p.serialNumber && 'S/N ' + p.seri
 
 class SerialRoles {
     /** `onData(role, Uint8Array)` and `onState(role, { state, message, path })` report to the window. */
-    constructor({ simulated = false, onData, onState }) {
-        this.simulated = simulated; this.onData = onData; this.onState = onState;
+    /** `simulated` says per role whether the pretend port is offered instead of the real ones: { timer, meet }. */
+    constructor({ simulated = {}, onData, onState }) {
+        this.simulated = { timer: !!simulated.timer, meet: !!simulated.meet }; this.onData = onData; this.onState = onState;
         this.ports = { timer: null, meet: null }; this.want = { timer: null, meet: null }; this.retry = { timer: null, meet: null };
         this.states = { timer: { state: 'closed', message: '', path: null }, meet: { state: 'closed', message: '', path: null } };
     }
-    /** Switch between the real ports and the simulated ones. Whatever is open is closed first. */
-    async setSimulated(on) {
-        if (!!on === this.simulated) return;
-        for (const role of Object.keys(ROLES)) await this.close(role);
-        this.simulated = !!on;
+    /** Switch one role between its real ports and the simulated one. Whatever it has open is closed first. */
+    async setSimulated(role, on) {
+        if (!ROLES[role] || !!on === this.simulated[role]) return;
+        await this.close(role);
+        this.simulated[role] = !!on;
     }
     /** The simulated console by hand: { event, heat, racing } while it is, null while it runs the scripted meet. */
     simState() { const m = simConsole().manual; return m ? { event: m.event, heat: m.heat, racing: m.racing } : null; }
     simControl(event, heat) { simConsole().control(event, heat); return this.simState(); }
     simRace(on) { simConsole().race(on); return this.simState(); }
-    async list() {
-        if (this.simulated) return SIM_PORTS;
+    /** The ports on offer for a role: the pretend one while that role is simulated, else the machine's. */
+    async list(role) {
+        if (this.simulated[role]) return [SIM_PORTS[role === 'meet' ? 1 : 0]];
         const { SerialPort } = require('serialport');
         const ports = await SerialPort.list();
         // USB adapters first; a Mac's Bluetooth and debug ports go to the bottom.
@@ -70,8 +72,8 @@ class SerialRoles {
     state(role) { return this.states[role]; }
     _state(role, state, message, path) { this.states[role] = { state, message, path }; this.onState(role, this.states[role]); }
     _create(role, path) {
-        if (this.simulated) {
-            if (!SIM_PORTS.some(p => p.path === path)) throw new Error('No such simulated port: ' + path);
+        if (path.startsWith('sim:')) {
+            if (!this.simulated[role] || !SIM_PORTS.some(p => p.path === path)) throw new Error('No such simulated port: ' + path);
             return new SimPort(path);
         }
         const { SerialPort } = require('serialport');

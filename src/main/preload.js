@@ -8,7 +8,7 @@ const on = (channel, callback) => { const handler = (event, ...args) => callback
 contextBridge.exposeInMainWorld('lanecast', {
     info: () => invoke('app:info'),
     serial: {
-        list: () => invoke('serial:list'),
+        list: role => invoke('serial:list', role),
         open: (role, path) => invoke('serial:open', role, path),
         close: role => invoke('serial:close', role),
         state: role => invoke('serial:state', role),
@@ -17,7 +17,7 @@ contextBridge.exposeInMainWorld('lanecast', {
     },
     sim: {
         state: () => invoke('sim:state'),
-        set: on => invoke('sim:set', on),
+        set: (part, on) => invoke('sim:set', part, on),
         control: (event, heat) => invoke('sim:control', event, heat),
         race: on => invoke('sim:race', on),
         onChange: callback => on('sim:changed', callback)
