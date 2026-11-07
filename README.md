@@ -1,0 +1,60 @@
+# Lanecast
+
+[lanecast.live](https://lanecast.live) · Stream swim meets to YouTube from one app. Lanecast reads the timing console and HY-TEK Meet Manager over serial, will take the camera over the network, composites the overlays and sends the program out — on Linux, Windows and macOS, from a single install.
+
+**Status: early.** The data side works: timer in, Meet Manager in, overlay feed out, with a simulated meet for trying it without hardware. Camera, compositing and the YouTube encoder are next; see [docs/architecture.md](docs/architecture.md) for the plan.
+
+## What it does today
+
+| Panel | What it does |
+| --- | --- |
+| **Timer** | Pick the serial port the console's scoreboard output is on and press Connect. Shows the running clock, event/heat and race state; View data shows every lane. |
+| **Meet data** | Pick the port on Meet Manager's scoreboard link and press Connect. Start lists accumulate as Meet Manager sends them and are kept between runs. Load reads Meet Manager's `.scb` export files; Save writes them back out; View data steps through events and heats. |
+| **Overlay feed** | A WebSocket server on port 8080 inside the app. Every scoreboard change goes to every overlay connected, on this machine or another. View data shows the current packet. |
+
+No baud rates or parity to set: each link has one correct setting and the app uses it. A port that was connected when the app closed is reconnected at launch; a port that drops out is reopened when it comes back.
+
+## Running it
+
+Needs [Node.js](https://nodejs.org) 20 or newer.
+
+```bash
+npm install
+npm start
+```
+
+Without hardware:
+
+```bash
+npm run simulate
+```
+
+Both Connect buttons then open a made-up meet that repeats. Everything shown comes from the simulator, nothing from a real console.
+
+Tests run without Electron:
+
+```bash
+npm test
+```
+
+A full check of the app on the simulated ports, including a screenshot:
+
+```bash
+npx electron test/smoke.js shot.png
+```
+
+## Installers
+
+`npm run dist` builds the installer for the OS it runs on into `dist/`. The [build workflow](.github/workflows/build.yml) builds all three when a `v*` tag is pushed. Builds are unsigned for now: on macOS right-click → Open the first time; Windows SmartScreen will warn. On Linux, add yourself to the `dialout` group to open serial ports.
+
+## At the pool
+
+- The console's **scoreboard output** and Meet Manager's **scoreboard link** are two separate cables; each needs its own USB serial adapter. Lanecast only listens on both.
+- Meet Manager's link has two directions on separate wires. Tap the one Meet Manager transmits on; if the Meet data panel says it is seeing the scoreboard computer's line, move the tap to the other wire.
+- Overlays (an OBS browser source today, Lanecast's own compositor later) connect to `ws://<this machine>:8080/`. The panel shows the address.
+
+Protocol notes, reconstructed from captures of real meets: [timer](docs/timer-protocol.md), [Meet Manager](docs/meet-manager-link.md). Keep captures and start-list files with athlete names out of the repository; `.gitignore` already excludes `*.scb`, `*.csv` and `captures/`.
+
+## Licence
+
+MIT. See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) for the reference implementation that informed the timer decoding.

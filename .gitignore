@@ -1,0 +1,9 @@
+node_modules/
+dist/
+out/
+*.log
+.DS_Store
+# Serial captures and meet files carry athlete names: keep them out of the repository.
+captures/
+*.scb
+*.csv

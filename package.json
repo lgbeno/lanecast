@@ -1,0 +1,61 @@
+{
+  "name": "lanecast",
+  "version": "0.1.0",
+  "description": "Stream swim meets to YouTube from one app: timing console and Meet Manager data in, cameras and overlays composited, program out.",
+  "main": "src/main/main.js",
+  "private": true,
+  "license": "MIT",
+  "author": "Luke Beno",
+  "homepage": "https://lanecast.live",
+  "repository": "github:lgbeno/lanecast",
+  "type": "commonjs",
+  "scripts": {
+    "start": "electron .",
+    "simulate": "electron . --simulate",
+    "test": "node test/run.js",
+    "dist": "electron-builder --publish never",
+    "postinstall": "electron-builder install-app-deps"
+  },
+  "build": {
+    "appId": "live.lanecast.app",
+    "productName": "Lanecast",
+    "files": [
+      "src/**/*",
+      "package.json"
+    ],
+    "directories": {
+      "output": "dist"
+    },
+    "mac": {
+      "target": [
+        "dmg"
+      ],
+      "category": "public.app-category.video"
+    },
+    "win": {
+      "target": [
+        "nsis"
+      ]
+    },
+    "linux": {
+      "target": [
+        "AppImage",
+        "deb"
+      ],
+      "category": "AudioVideo"
+    }
+  },
+  "dependencies": {
+    "serialport": "^13.0.0",
+    "ws": "^8.22.1"
+  },
+  "devDependencies": {
+    "electron": "^45.2.3",
+    "electron-builder": "^26.18.0"
+  },
+  "allowScripts": {
+    "electron@45.2.3": true,
+    "@serialport/bindings-cpp": false,
+    "electron-winstaller": false
+  }
+}
