@@ -21,8 +21,10 @@
     "productName": "Lanecast",
     "files": [
       "src/**/*",
+      "assets/**/*",
       "package.json"
     ],
+    "icon": "build/icon.png",
     "directories": {
       "output": "dist"
     },

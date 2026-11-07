@@ -31,9 +31,14 @@ app.on('browser-window-created', (event, win) => {
             document.getElementById('meetPort').value = 'sim:meet'; document.getElementById('meetConnect').click();`);
         await wait(7000);
         const text = id => `document.getElementById(${JSON.stringify(id)}).textContent`;
+        const dots = `Object.fromEntries(['stream','timer','events','cameras','theme'].map(t => [t, document.getElementById('tab-' + t).firstElementChild.dataset.ready === 'true']))`;
         const r = await win.webContents.executeJavaScript(`({ timer: ${text('timerStatus')}, clock: ${text('clock')}, event: ${text('event')}, state: ${text('raceState')},
-            meet: ${text('meetStatus')}, events: ${text('eventsLoaded')}, last: ${text('lastNo')}, relay: ${text('relayStatus')}, clients: ${text('clients')}, packets: ${text('packets')}, error: document.getElementById('error').hidden ? '' : ${text('error')} })`);
+            meet: ${text('meetStatus')}, events: ${text('eventsLoaded')}, last: ${text('lastNo')}, relay: ${text('relayStatus')}, clients: ${text('clients')}, packets: ${text('packets')},
+            ready: ${dots}, shown: document.querySelector('[role=tabpanel]:not([hidden])').id, error: document.getElementById('error').hidden ? '' : ${text('error')} })`);
         console.log(JSON.stringify(r, null, 1));
+        check(r.shown === 'stream', 'the Stream tab is shown first: ' + r.shown);
+        check(r.ready.stream && r.ready.timer && r.ready.events, 'Stream, Timer and Events dots are green');
+        check(!r.ready.cameras && !r.ready.theme, 'unbuilt tabs stay quiet');
         check(r.timer === 'Connected · receiving', 'timer port reads the simulated console');
         check(/^\d:\d\d\.\d$/.test(r.clock), 'clock shows a time: ' + r.clock);
         check(r.event === '1 / 1', 'event and heat decoded: ' + r.event);
@@ -46,12 +51,20 @@ app.on('browser-window-created', (event, win) => {
         check(received.length >= 5 && received.at(-1).type === 'scoreboard' && received.at(-1).event === 1, `overlay received ${received.length} packets`);
         check(received.some(p => p.lanes.some(l => l.name)), 'packets carry names from the start lists');
         check(!r.error, 'no error shown: ' + r.error);
-        if (shot) { fs.writeFileSync(shot, (await win.webContents.capturePage()).toPNG()); console.log('screenshot ' + shot); }
+        if (shot) {
+            // One screenshot per tab: shot.png, shot-timer.png, shot-events.png …
+            for (const t of ['stream', 'timer', 'events']) {
+                await win.webContents.executeJavaScript(`document.getElementById('tab-${t}').click()`); await wait(400);
+                const file = t === 'stream' ? shot : shot.replace(/\.png$/, `-${t}.png`);
+                fs.writeFileSync(file, (await win.webContents.capturePage()).toPNG()); console.log('screenshot ' + file);
+            }
+        }
         socket.close();
         await win.webContents.executeJavaScript(`document.getElementById('timerDisconnect').click(); document.getElementById('meetDisconnect').click();`);
         await wait(500);
-        const after = await win.webContents.executeJavaScript(`[${text('timerStatus')}, ${text('meetStatus')}]`);
-        check(after[0] === 'Not connected.' && after[1] === 'Not connected.', 'both ports disconnect: ' + after.join(' / '));
+        const after = await win.webContents.executeJavaScript(`[${text('timerStatus')}, ${text('meetStatus')}, ${dots}]`);
+        check(after[0] === 'Not connected.' && after[1] === 'Not connected.', 'both ports disconnect: ' + after.slice(0, 2).join(' / '));
+        check(!after[2].timer, 'the Timer dot goes quiet once disconnected');
         console.log(failed ? 'SMOKE FAILED' : 'SMOKE PASSED');
         app.exit(failed ? 1 : 0);
     });

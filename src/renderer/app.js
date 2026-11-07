@@ -6,6 +6,9 @@
     const $ = id => document.getElementById(id);
     const api = window.lanecast;
     const ROLES = ['timer', 'meet'];
+    const TABS = ['stream', 'timer', 'events', 'cameras', 'theme'];
+    let tab = 'stream';
+    const visible = id => !$(id).hidden;
     const parser = new GENSER.StreamParser();
     let decoder = new CTS.Decoder(), latest = decoder.snapshot(0), timerStart = performance.now();
     let rosters = new GENSER.RosterStore(), lastRecord = null, lastRecordAt = null, saveTimer = null;
@@ -99,20 +102,32 @@
         return tr;
     };
     const ago = at => `${Math.round((performance.now() - at) / 1000)} s ago`;
+    /** Which parts of the meet are ready to go. A tab's dot is green while its part is. */
+    function readiness() {
+        return {
+            stream: relay.listening && relay.clients > 0,                       // overlays are listening
+            timer: connected('timer') && latest.blocks > 0 && !latest.stale,    // the console's clock is arriving
+            events: rosters.heats > 0,                                          // start lists in hand
+            cameras: false,                                                     // not built yet
+            theme: false                                                        // not built yet
+        };
+    }
     function render() {
+        const ready = readiness();
+        for (const name of TABS) $('tab-' + name).firstElementChild.dataset.ready = String(ready[name]);
         // Timer: only what the console sends.
         $('event').textContent = `${latest.event ?? '—'} / ${latest.heat ?? '—'}`;
         $('clock').textContent = latest.clock || '—:—.—';
         $('raceState').textContent = latest.state === 'reset' ? 'RESET · INFERRED' : latest.state.toUpperCase();
-        if ($('timerData').open) $('lanes').replaceChildren(...latest.lanes.map(lane => row([lane.lane, lane.place || '—',
+        if (visible('timer')) $('lanes').replaceChildren(...latest.lanes.map(lane => row([lane.lane, lane.place || '—',
             lane.time ? { text: lane.time, className: 'time' } : lane.followsClock && latest.clock ? { text: latest.clock, className: 'faint' } : '—'])));
-        // Meet data: how much is stored, what arrived last, and the selected start list.
+        // Events: how much is stored, what arrived last, and the selected start list.
         $('eventsLoaded').textContent = rosters.events.size;
         $('heatsLoaded').textContent = rosters.heats ? plural(rosters.heats, 'heat') : 'no heats';
         $('lastNo').textContent = lastStartList ? `${lastStartList.event} / ${lastStartList.heat}` : '— / —';
         $('saveFiles').disabled = !rosters.events.size;
         $('clearRosters').disabled = !rosters.heats && !lastStartList;
-        if ($('eventData').open) {
+        if (visible('events')) {
             const entry = selected.event ? rosters.events.get(selected.event) : null, heat = entry?.heats[selected.heat - 1];
             if (document.activeElement !== $('viewEventNo')) $('viewEventNo').value = selected.event ?? '';
             if (document.activeElement !== $('viewHeatNo')) $('viewHeatNo').value = selected.event ? selected.heat : '';
@@ -131,7 +146,7 @@
         $('clients').textContent = relay.clients;
         $('packets').textContent = packets.toLocaleString();
         $('lastSent').textContent = lastPacketAt === null ? '—' : ago(lastPacketAt);
-        if ($('packetData').open) $('packetJson').textContent = lastSent ? JSON.stringify(JSON.parse(lastSent), null, 2) : 'No packet yet. Packets go out while the timer is connected and an event and heat are decoded.';
+        if (visible('stream') && $('packetJson').parentElement.open) $('packetJson').textContent = lastSent ? JSON.stringify(JSON.parse(lastSent), null, 2) : 'No packet yet. Packets go out while the timer is connected and an event and heat are decoded.';
         // Ports.
         for (const role of ROLES) {
             const link = links[role];
@@ -185,14 +200,27 @@
     api.serial.onData((role, bytes) => { if (role === 'timer') feedTimer(bytes, performance.now() - timerStart); else onMeetChunk(bytes); });
     api.relay.onStatus(status => { relay = status; render(); });
 
+    // ---- tabs ----------------------------------------------------------------------------
+    function showTab(name, remember = true) {
+        if (!TABS.includes(name)) name = TABS[0];
+        tab = name;
+        for (const t of TABS) { $(t).hidden = t !== name; $('tab-' + t).setAttribute('aria-selected', String(t === name)); }
+        if (remember) api.store.set('tab', name).catch(() => {});
+        render();
+    }
+    for (const t of TABS) $('tab-' + t).onclick = () => showTab(t);
+    document.querySelector('.tabs').addEventListener('keydown', e => {
+        if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+        const next = TABS[(TABS.indexOf(tab) + (e.key === 'ArrowRight' ? 1 : TABS.length - 1)) % TABS.length];
+        showTab(next); $('tab-' + next).focus(); e.preventDefault();
+    });
+
     // ---- wiring --------------------------------------------------------------------------
     for (const role of ROLES) {
         $(role + 'Connect').onclick = () => connect(role, $(role + 'Port').value);
         $(role + 'Disconnect').onclick = () => disconnect(role);
     }
-    $('timerView').onclick = () => { $('timerData').showModal(); render(); };
-    $('packetView').onclick = () => { $('packetData').showModal(); render(); };
-    $('eventView').onclick = () => { $('eventData').showModal(); render(); };
+    $('packetJson').parentElement.addEventListener('toggle', render);
     $('loadFiles').onclick = loadStartLists;
     $('saveFiles').onclick = saveStartLists;
     // Stepping the event goes through the events stored; typing a number shows that event, stored or not.
@@ -219,10 +247,11 @@
         const info = await api.info();
         if (info.simulated) {
             $('banner').hidden = false;
-            $('banner').textContent = 'Simulated ports. Both Connect buttons open a made-up meet that repeats; nothing here comes from a timing console or Meet Manager.';
+            $('banner').textContent = 'Simulated ports. The Timer and Events tabs connect to a made-up meet that repeats; nothing here comes from a timing console or Meet Manager.';
         }
         try { rosters = GENSER.RosterStore.fromJSON(await api.store.get('rosters')); } catch (e) { /* damaged data: start empty */ }
         remembered = (await api.store.get('ports')) || {};
+        showTab((await api.store.get('tab')) || 'stream', false);
         relay = await api.relay.status();
         for (const role of ROLES) links[role] = await api.serial.state(role);
         await refreshPorts();
