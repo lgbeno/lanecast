@@ -1,7 +1,8 @@
-/* Lanecast main process: one window, two serial ports, the overlay feed, and the files.
+/* Lanecast main process: one window, two serial ports, the overlay feed, the camera engine, and the files.
  *
  *   timer port  -> window (CTS.Decoder)                -> Packet.scoreboard() -> Relay -> overlays
  *   meet port   -> window (GENSER.StreamParser, RosterStore) -'
+ *   cameras     -> go2rtc -> window (WebRTC)
  */
 'use strict';
 const { app, BrowserWindow, ipcMain, dialog } = require('electron');
@@ -12,8 +13,9 @@ const { Relay } = require('./relay');
 const { Store } = require('./store');
 const { CameraEngine } = require('./cameras');
 
-const simulated = process.argv.includes('--simulate') || process.env.LANECAST_SIMULATE === '1';
+const PATTERN = { id: 'cam-pattern', name: 'Test pattern', url: 'ffmpeg:virtual?video=testsrc&size=1280x720#video=h264' };
 let win = null, serial = null, relay = null, store = null, cameras = null;
+let simulated = process.argv.includes('--simulate') || process.env.LANECAST_SIMULATE === '1';
 const send = (channel, ...args) => { if (win && !win.isDestroyed()) win.webContents.send(channel, ...args); };
 
 function createWindow() {
@@ -25,10 +27,19 @@ function createWindow() {
     win.on('closed', () => { win = null; });
 }
 
+/** Simulation is a switch: the made-up meet's ports instead of real ones, and a test-pattern camera when ffmpeg can draw one. */
+async function setSimulated(on) {
+    on = !!on;
+    if (on !== simulated) { simulated = on; store.set('simulate', on); await serial.setSimulated(on); }
+    if (on && cameras.ffmpeg) await cameras.put(PATTERN); else await cameras.remove(PATTERN.id);
+    send('sim:changed', simState());
+}
+const simState = () => ({ on: simulated, ffmpeg: !!cameras?.ffmpeg, ...(serial?.simState() || { event: null, heat: null, racing: false }) });
+
 app.whenReady().then(async () => {
-    // Simulated meets are stored apart, so made-up names never turn up at a real meet.
-    store = new Store(path.join(app.getPath('userData'), simulated ? 'simulated.json' : 'lanecast.json'));
+    store = new Store(path.join(app.getPath('userData'), 'lanecast.json'));
     await store.load();
+    if (!process.argv.includes('--simulate') && !process.env.LANECAST_SIMULATE) simulated = !!store.get('simulate', false);
     serial = new SerialRoles({ simulated, onData: (role, bytes) => send('serial:data', role, bytes), onState: (role, state) => send('serial:state', role, state) });
     relay = new Relay({ port: Number(store.get('relayPort', 8080)) || 8080, onStatus: status => send('relay:status', status) });
     relay.start();
@@ -36,8 +47,7 @@ app.whenReady().then(async () => {
         packaged: app.isPackaged, dataDir: app.getPath('userData'), cameras: store.get('cameras', []),
         onChange: list => store.set('cameras', list), onStatus: state => send('cameras:status', state)
     });
-    // Without hardware, a test pattern stands in for a camera, if ffmpeg is about to draw it.
-    if (simulated && cameras.ffmpeg && !cameras.cameras.length) cameras.cameras.push({ id: 'cam-pattern', name: 'Test pattern', url: 'ffmpeg:virtual?video=testsrc&size=1280x720#video=h264' });
+    await setSimulated(simulated);
     cameras.start();
     createWindow();
     app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
@@ -53,6 +63,10 @@ ipcMain.handle('serial:list', () => serial.list());
 ipcMain.handle('serial:open', (event, role, portPath) => serial.open(role, portPath));
 ipcMain.handle('serial:close', (event, role) => serial.close(role));
 ipcMain.handle('serial:state', (event, role) => serial.state(role));
+ipcMain.handle('sim:state', () => simState());
+ipcMain.handle('sim:set', (event, on) => setSimulated(on));
+ipcMain.handle('sim:control', (event, e, h) => { serial.simControl(Number(e), Number(h)); return simState(); });
+ipcMain.handle('sim:race', (event, on) => { serial.simRace(!!on); return simState(); });
 ipcMain.handle('relay:status', () => relay.status());
 ipcMain.on('relay:send', (event, text) => relay.broadcast(text));
 ipcMain.handle('cameras:status', () => cameras.state());

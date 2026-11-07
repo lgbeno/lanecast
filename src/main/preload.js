@@ -15,6 +15,13 @@ contextBridge.exposeInMainWorld('lanecast', {
         onData: callback => on('serial:data', callback),
         onState: callback => on('serial:state', callback)
     },
+    sim: {
+        state: () => invoke('sim:state'),
+        set: on => invoke('sim:set', on),
+        control: (event, heat) => invoke('sim:control', event, heat),
+        race: on => invoke('sim:race', on),
+        onChange: callback => on('sim:changed', callback)
+    },
     relay: {
         status: () => invoke('relay:status'),
         send: text => ipcRenderer.send('relay:send', text),

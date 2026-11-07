@@ -5,30 +5,57 @@
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self' http://127.0.0.1:*; media-src 'self' blob:">
 <title>Lanecast</title>
 <link rel="stylesheet" href="style.css">
-<script defer src="../protocol/cts.js"></script><script defer src="../protocol/genser.js"></script><script defer src="../protocol/packet.js"></script><script defer src="app.js"></script>
+<script defer src="../protocol/cts.js"></script><script defer src="../protocol/genser.js"></script><script defer src="../protocol/packet.js"></script><script defer src="../protocol/simulator.js"></script>
+<script defer src="mock.js"></script><script defer src="app.js"></script>
 </head>
 <body>
 <nav class="tabs" role="tablist" aria-label="Lanecast">
-<img class="mark" src="../../assets/logo.svg" alt="Lanecast" width="28" height="28">
-<button role="tab" id="tab-stream" aria-controls="stream" aria-selected="false"><i class="dot" data-ready="false"></i>Stream</button>
-<button role="tab" id="tab-timer" aria-controls="timer" aria-selected="false"><i class="dot" data-ready="false"></i>Timer</button>
-<button role="tab" id="tab-events" aria-controls="events" aria-selected="false"><i class="dot" data-ready="false"></i>Events</button>
-<button role="tab" id="tab-cameras" aria-controls="cameras" aria-selected="false"><i class="dot" data-ready="false"></i>Cameras</button>
+<button role="tab" id="tab-stream" aria-controls="stream" aria-selected="false"><i class="dot" data-ready="false"></i>Stream<b class="sim-badge" hidden>Sim</b></button>
+<button role="tab" id="tab-timer" aria-controls="timer" aria-selected="false"><i class="dot" data-ready="false"></i>Timer<b class="sim-badge" hidden>Sim</b></button>
+<button role="tab" id="tab-events" aria-controls="events" aria-selected="false"><i class="dot" data-ready="false"></i>Events<b class="sim-badge" hidden>Sim</b></button>
+<button role="tab" id="tab-cameras" aria-controls="cameras" aria-selected="false"><i class="dot" data-ready="false"></i>Cameras<b class="sim-badge" hidden>Sim</b></button>
 <button role="tab" id="tab-theme" aria-controls="theme" aria-selected="false"><i class="dot" data-ready="false"></i>Theme</button>
 </nav>
 <main>
 <p id="banner" class="banner" role="note" hidden></p>
 
 <section id="stream" role="tabpanel" aria-labelledby="tab-stream" hidden>
-<div class="columns">
-<article><h2>Overlay feed</h2>
+<div class="program">
+<div class="stage" id="stage">
+<video id="programVideo" autoplay muted playsinline></video>
+<div class="bug" id="bug" hidden>
+<div class="bug-top"><div class="bug-event"><span id="bugEvent">EVENT — · HEAT —</span><strong id="bugTitle"></strong></div><div class="bug-clock" id="bugClock">—:—.—</div></div>
+<ol class="bug-lanes" id="bugLanes"></ol>
+</div>
+<p class="stage-note" id="stageNote">No camera. Add one on the Cameras tab.</p>
+</div>
+<div class="program-bar">
+<button id="goLive" class="primary live">Go Live</button><button id="configure">Configure</button>
+<span id="programStatus" class="small">Not streaming</span>
+<div id="simControls" class="sim-controls" hidden>
+<span class="eyebrow">SIM</span>
+<div class="stepper"><button id="simEventDown" class="step" type="button" title="Previous event">−</button><input id="simEventNo" type="number" min="1" max="999" aria-label="Event"><button id="simEventUp" class="step" type="button" title="Next event">+</button></div>
+<span class="small">event</span>
+<div class="stepper"><button id="simHeatDown" class="step" type="button" title="Previous heat">−</button><input id="simHeatNo" type="number" min="1" max="99" aria-label="Heat"><button id="simHeatUp" class="step" type="button" title="Next heat">+</button></div>
+<span class="small">heat</span>
+<button id="simRace" class="latch" type="button" aria-pressed="false">Race</button>
+</div>
+<label class="switch"><input type="checkbox" class="simToggle"><span></span>Simulation</label>
+</div>
+</div>
+<dialog id="configureDialog" class="wide"><form method="dialog"><h3>Configure the stream</h3>
+<div class="field"><label for="programCamera">Program camera</label><select id="programCamera"></select></div>
+<h3 class="later">Overlay feed</h3>
 <p id="relayStatus" class="small">Starting…</p>
 <div class="readout"><div><p class="eyebrow">OVERLAYS</p><strong id="clients">0</strong><p class="small">connected</p></div><div><p class="eyebrow">PACKETS SENT</p><strong id="packets">0</strong></div><div><p class="eyebrow">LAST SENT</p><strong id="lastSent">—</strong></div></div>
-<details><summary>Current packet</summary><pre id="packetJson" class="packet">No packet yet.</pre></details></article>
-<article class="soon"><h2>YouTube</h2><p class="small">Not built yet. Once the camera is in, the composited program goes out from here: stream key, Start and Stop, bitrate, and the encoder's health.</p></article>
-</div></section>
+<details><summary>Current packet</summary><pre id="packetJson" class="packet">No packet yet.</pre></details>
+<h3 class="later">YouTube</h3>
+<p class="small">Not built yet. The stream key, bitrate and the encoder's health will live here.</p>
+<div class="actions"><button class="primary">Done</button></div></form></dialog>
+</section>
 
 <section id="timer" role="tabpanel" aria-labelledby="tab-timer" hidden>
+<div class="panel-head"><h2>Timer</h2><label class="switch"><input type="checkbox" class="simToggle"><span></span>Simulation</label></div>
 <div class="columns">
 <article><h2>Timing console</h2>
 <div class="actions"><select id="timerPort" aria-label="Timer port"></select><button id="timerConnect" class="primary">Connect</button><button id="timerDisconnect" disabled>Disconnect</button></div>
@@ -39,6 +66,7 @@
 </div></section>
 
 <section id="events" role="tabpanel" aria-labelledby="tab-events" hidden>
+<div class="panel-head"><h2>Events</h2><label class="switch"><input type="checkbox" class="simToggle"><span></span>Simulation</label></div>
 <div class="columns">
 <article><h2>Meet Manager</h2>
 <div class="actions"><select id="meetPort" aria-label="Meet Manager port"></select><button id="meetConnect" class="primary">Connect</button><button id="meetDisconnect" disabled>Disconnect</button></div>
@@ -54,6 +82,7 @@
 </div></section>
 
 <section id="cameras" role="tabpanel" aria-labelledby="tab-cameras" hidden>
+<div class="panel-head"><h2>Cameras</h2><label class="switch"><input type="checkbox" class="simToggle"><span></span>Simulation</label></div>
 <div class="columns wide-left">
 <article><h2>Cameras</h2>
 <p id="engineStatus" class="small">Starting the camera engine…</p>
@@ -67,6 +96,7 @@
 </div></section>
 
 <section id="theme" role="tabpanel" aria-labelledby="tab-theme" hidden>
+<div class="panel-head"><h2>Theme</h2><label class="switch"><input type="checkbox" class="simToggle"><span></span>Simulation</label></div>
 <article class="soon"><h2>Theme</h2><p class="small">Not built yet. The look of the overlays: colours, team logos, fonts, which graphics show and when.</p></article>
 </section>
 

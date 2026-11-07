@@ -39,6 +39,14 @@ app.on('browser-window-created', (event, win) => {
         check(r.shown === 'stream', 'the Stream tab is shown first: ' + r.shown);
         check(r.ready.stream && r.ready.timer && r.ready.events, 'Stream, Timer and Events dots are green');
         check(!r.ready.theme, 'the unbuilt Theme tab stays quiet');
+        const badges = await win.webContents.executeJavaScript(`[...document.querySelectorAll('.sim-badge')].filter(b => !b.hidden).length`);
+        check(badges === 4, 'Sim badges on the four simulated tabs: ' + badges);
+        // The simulated console by hand, from the Stream tab: pick event 2 heat 1 and start the race.
+        await win.webContents.executeJavaScript(`document.getElementById('simEventUp').click()`); await wait(300);
+        await win.webContents.executeJavaScript(`document.getElementById('simRace').click()`); await wait(2500);
+        const driven = await win.webContents.executeJavaScript(`({ event: ${text('event')}, state: ${text('raceState')}, clock: ${text('clock')}, racing: document.getElementById('simRace').getAttribute('aria-pressed') })`);
+        check(driven.event === '2 / 1' && driven.state === 'RUNNING' && driven.racing === 'true', `race started by hand on event 2: ${driven.event} ${driven.state} ${driven.clock}`);
+        await win.webContents.executeJavaScript(`document.getElementById('simRace').click()`); await wait(600);
         check(r.timer === 'Connected · receiving', 'timer port reads the simulated console');
         check(/^\d:\d\d\.\d$/.test(r.clock), 'clock shows a time: ' + r.clock);
         check(r.event === '1 / 1', 'event and heat decoded: ' + r.event);
@@ -48,7 +56,7 @@ app.on('browser-window-created', (event, win) => {
         check(r.clients === '1', 'the test overlay is counted: ' + r.clients);
         // During the lineup the clock sits at 0:00.0 and packets go out once a second; during a race, ten a second.
         check(Number(r.packets) >= 5, 'packets published: ' + r.packets);
-        check(received.length >= 5 && received.at(-1).type === 'scoreboard' && received.at(-1).event === 1, `overlay received ${received.length} packets`);
+        check(received.length >= 5 && received.at(-1).type === 'scoreboard' && received.at(-1).event >= 1, `overlay received ${received.length} packets`);
         check(received.some(p => p.lanes.some(l => l.name)), 'packets carry names from the start lists');
         check(!r.error, 'no error shown: ' + r.error);
         // Cameras: the engine must run; with ffmpeg about, the simulated test pattern must play.
@@ -60,7 +68,16 @@ app.on('browser-window-created', (event, win) => {
             const cams = await win.webContents.executeJavaScript(`({ tiles: document.querySelectorAll('.tile').length, status: [...document.querySelectorAll('.tile .small')].map(s => s.textContent), ready: ${dots} })`);
             check(cams.tiles === 1 && /^Live · \d+×\d+/.test(cams.status[0]), 'test pattern camera is live: ' + cams.status.join(' / '));
             check(cams.ready.cameras, 'Cameras dot is green');
+            const program = await win.webContents.executeJavaScript(`({ width: document.getElementById('programVideo').videoWidth, note: document.getElementById('stageNote').hidden, bug: !document.getElementById('bug').hidden, status: ${text('programStatus')}, ready: ${dots} })`);
+            check(program.width > 0 && program.note && program.bug && program.ready.stream, `program shows the camera under the lower third: ${program.width}px, ${program.status}`);
         }
+        // Simulation off: the pretend ports close and the badges go; on again: back as before.
+        await win.webContents.executeJavaScript(`document.querySelector('#stream .simToggle').click()`); await wait(1500);
+        const off = await win.webContents.executeJavaScript(`({ timer: ${text('timerStatus')}, badges: [...document.querySelectorAll('.sim-badge')].filter(b => !b.hidden).length, controls: document.getElementById('simControls').hidden, checked: document.querySelector('#timer .simToggle').checked })`);
+        check(off.timer === 'Not connected.' && off.badges === 0 && off.controls && !off.checked, `simulation off closes the ports and clears the badges: ${JSON.stringify(off)}`);
+        await win.webContents.executeJavaScript(`document.querySelector('#events .simToggle').click()`); await wait(2500);
+        const on = await win.webContents.executeJavaScript(`({ timer: ${text('timerStatus')}, badges: [...document.querySelectorAll('.sim-badge')].filter(b => !b.hidden).length })`);
+        check(on.timer === 'Connected · receiving' && on.badges === 4, `simulation on again reconnects: ${JSON.stringify(on)}`);
         if (shot) {
             // One screenshot per tab: shot.png, shot-timer.png, shot-events.png …
             for (const t of ['stream', 'timer', 'events', 'cameras']) {

@@ -26,11 +26,11 @@ Lanecast reads the timing console and HY-TEK Meet Manager over serial, will take
 
 ## What it does today
 
-Five tabs across the top. Each tab's dot turns green when that part is ready to go, and stays quiet otherwise.
+Five tabs across the top. Each tab's dot turns green when that part is ready to go, and stays quiet otherwise. Every tab has a **Simulation** switch: on, the app runs a made-up meet on pretend ports (and a test-pattern camera when ffmpeg is on the PATH) and the tabs wear a *Sim* badge, so you can learn the app on the kitchen table.
 
 | Tab | What it does | Green when |
 | --- | --- | --- |
-| **Stream** | The overlay feed: a WebSocket server on port 8080 inside the app. Every scoreboard change goes to every overlay connected, on this machine or another. The current packet is shown. YouTube output will live here. | an overlay is connected |
+| **Stream** | The program, near full screen: the chosen camera under the lower third (event, heat, title, clock, lanes). **Go Live** will send it to YouTube (not built yet); **Configure** holds the program camera, the overlay feed (a WebSocket server on port 8080 inside the app; every scoreboard change goes to every overlay connected) and, later, the stream key. In simulation, controls under the program pick the event and heat and start and stop the race. | the program has a picture |
 | **Timer** | Pick the serial port the console's scoreboard output is on and press Connect. Shows the running clock, event/heat, race state and every lane. | the console's clock is arriving |
 | **Events** | Pick the port on Meet Manager's scoreboard link and press Connect. Start lists accumulate as Meet Manager sends them and are kept between runs. Load reads Meet Manager's `.scb` export files, Save writes them back out, and the browser steps through events and heats. | start lists are in hand |
 | **Cameras** | Add a camera by its RTSP address and watch it live in the window. The pictures come through [go2rtc](https://github.com/AlexxIT/go2rtc), which the app runs beside itself; nothing else to install. | a camera's picture is arriving |
@@ -47,13 +47,21 @@ npm install
 npm start
 ```
 
-Without hardware:
+Without hardware, flip the **Simulation** switch in any tab, or start with it on:
 
 ```bash
 npm run simulate
 ```
 
-Both Connect buttons then open a made-up meet that repeats. Everything shown comes from the simulator, nothing from a real console. If `ffmpeg` is on your PATH, a test-pattern camera appears too.
+Everything shown then comes from the simulator, nothing from a real console. If `ffmpeg` is on your PATH, a test-pattern camera appears too.
+
+To work on the look of the window without launching Electron, serve the folder and open the page in a browser; `mock.js` stands in for the app's bridge with the same simulated meet and a drawn camera:
+
+```bash
+python3 -m http.server 8875
+```
+
+then open `http://localhost:8875/src/renderer/index.html`. Nothing there is real, but every tab, dot, badge and control is there to style.
 
 `npm install` also fetches the go2rtc binary for your machine into `vendor/` (`npm run fetch-go2rtc` to do it again).
 

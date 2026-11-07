@@ -1,5 +1,7 @@
 /* The window: decodes what the main process reads from the two ports, keeps the start lists,
- * and publishes one packet per scoreboard change to the overlay feed.
+ * shows the cameras, draws the program, and publishes one packet per scoreboard change to the
+ * overlay feed. Talks to the main process only through window.lanecast (see preload.js; in an
+ * ordinary browser, mock.js stands in).
  */
 'use strict';
 (() => {
@@ -7,22 +9,25 @@
     const api = window.lanecast;
     const ROLES = ['timer', 'meet'];
     const TABS = ['stream', 'timer', 'events', 'cameras', 'theme'];
+    const SIM_TABS = ['stream', 'timer', 'events', 'cameras'];
     let tab = 'stream';
     const visible = id => !$(id).hidden;
     const parser = new GENSER.StreamParser();
     let decoder = new CTS.Decoder(), latest = decoder.snapshot(0), timerStart = performance.now();
     let rosters = new GENSER.RosterStore(), lastRecord = null, lastRecordAt = null, saveTimer = null;
     let lastStartList = null;                    // the newest start list to arrive, from either source
-    const selected = { event: null, heat: 1 };   // the start list shown in the Meet data dialog
+    const selected = { event: null, heat: 1 };   // the start list shown in the Events tab
     let following = true;                        // the selection moves to each start list as it arrives, until the user steps away
     let lastSent = '', lastSendAt = 0, packets = 0, lastPacketAt = null;
     let relay = { port: 0, listening: false, clients: 0, sent: 0, error: '', hosts: [] };
+    let sim = { on: false, ffmpeg: false, event: null, heat: null, racing: false };
     let ports = [], remembered = {};
     const links = { timer: { state: 'closed', message: '', path: null }, meet: { state: 'closed', message: '', path: null } };
     const connected = role => links[role].state === 'open';
     const busy = role => links[role].state === 'connecting';
+    const rosterKey = () => sim.on ? 'rosters-sim' : 'rosters';     // made-up names are kept apart from a real meet's
 
-    const showError = e => { $('error').hidden = false; $('error').textContent = e.message || String(e); };
+    const showError = e => { $('error').hidden = false; $('error').textContent = (e.message || String(e)).replace(/^Error invoking remote method '[^']+': (Error: )?/, ''); };
     const hideError = () => { $('error').hidden = true; };
     const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
 
@@ -44,7 +49,8 @@
     }
     function saveRosters() {
         clearTimeout(saveTimer);
-        saveTimer = setTimeout(() => api.store.set('rosters', rosters.toJSON()).catch(() => {}), 500);
+        const key = rosterKey();
+        saveTimer = setTimeout(() => api.store.set(key, rosters.toJSON()).catch(() => {}), 500);
     }
     function onMeetChunk(chunk) {
         const now = performance.now(), records = parser.feed(chunk, now);
@@ -53,6 +59,10 @@
             arrived(record.event, record.heat, record.title, record.lanes, 'serial', Date.now());
         }
         if (records.length) { saveRosters(); publish(); }
+    }
+    async function loadRosters() {
+        try { rosters = GENSER.RosterStore.fromJSON(await api.store.get(rosterKey())); } catch (e) { rosters = new GENSER.RosterStore(); }
+        lastRecord = null; lastStartList = null; selected.event = null; selected.heat = 1; following = true; lastSent = '';
     }
     /** Meet Manager start-list files (.scb, one event each). A file replaces its whole event. */
     async function loadStartLists() {
@@ -104,6 +114,7 @@
         constructor(id, video) { this.id = id; this.video = video; this.pc = null; this.timer = null; this.stopped = false; this.frames = 0; this.frameAt = 0; this.startedAt = performance.now(); this.start(); }
         async start() {
             if (this.stopped) return;
+            if (api.cameras.mockStream) { this.video.srcObject = api.cameras.mockStream(this.id); return; }     // design mode
             this.close();
             const pc = this.pc = new RTCPeerConnection({ iceServers: [] });
             pc.addTransceiver('video', { direction: 'recvonly' }); pc.addTransceiver('audio', { direction: 'recvonly' });
@@ -120,7 +131,7 @@
         later() { clearTimeout(this.timer); this.timer = setTimeout(() => this.start(), 2000); }
         close() { if (this.pc) { this.pc.onconnectionstatechange = null; this.pc.close(); this.pc = null; } }
         stop() { this.stopped = true; clearTimeout(this.timer); this.close(); this.video.srcObject = null; }
-        /** Frames are still arriving: checked once a second from the render loop. */
+        /** Frames are still arriving. */
         get live() {
             const q = this.video.getVideoPlaybackQuality ? this.video.getVideoPlaybackQuality().totalVideoFrames : 0, now = performance.now();
             if (q > this.frames) { this.frames = q; this.frameAt = now; }
@@ -143,6 +154,10 @@
         const list = $('cameraList'), have = new Set(cameraList.map(c => c.id));
         for (const figure of [...list.children]) if (!have.has(figure.dataset.id)) { players.get(figure.dataset.id)?.stop(); players.delete(figure.dataset.id); figure.remove(); }
         if (engine.running) for (const camera of cameraList) if (!players.has(camera.id)) list.append(tileFor(camera));
+        const select = $('programCamera'), current = programCameraId();
+        select.replaceChildren(...cameraList.map(c => new Option(c.name, c.id)));
+        if (!cameraList.length) select.append(new Option('No cameras yet', ''));
+        if (current) select.value = current;
         render();
     }
     async function addCamera() {
@@ -151,22 +166,64 @@
             const camera = await api.cameras.add({ name: $('camName').value, url: $('camUrl').value });
             $('camName').value = ''; $('camUrl').value = ''; $('camAddStatus').textContent = `Added ${camera.name}.`;
             await refreshCameras();
-        } catch (e) { $('camAddStatus').textContent = e.message.replace(/^Error invoking remote method '[^']+': Error: /, ''); }
+        } catch (e) { $('camAddStatus').textContent = e.message.replace(/^Error invoking remote method '[^']+': (Error: )?/, ''); }
         $('camAdd').disabled = false;
     }
     function renderCameras() {
-        const live = [...players.values()].filter(p => p.live);
         $('engineStatus').textContent = !engine.installed ? 'The camera engine (go2rtc) is not in this build.' : engine.error ? `Camera engine · ${engine.error}`
             : !engine.running ? 'Starting the camera engine…' : `Camera engine running${engine.version ? ' · go2rtc ' + engine.version : ''}${engine.ffmpeg ? '' : ' · ffmpeg not found, so cameras must send H.264'}`;
         $('noCameras').hidden = cameraList.length > 0;
+        let live = 0;
         for (const figure of $('cameraList').children) {
             const player = players.get(figure.dataset.id), status = figure.querySelector('.small');
             if (!player) continue;
             const v = player.video;
-            if (player.live) { status.textContent = `Live · ${v.videoWidth}×${v.videoHeight}`; status.className = 'small live'; }
+            if (player.live) { live++; status.textContent = `Live · ${v.videoWidth}×${v.videoHeight}`; status.className = 'small live'; }
             else { status.className = 'small'; status.textContent = performance.now() - player.startedAt < 8000 ? 'Connecting…' : 'No video yet · check the address, and that the camera sends H.264'; }
         }
-        return live.length > 0;
+        return live > 0;
+    }
+
+    // ---- program -------------------------------------------------------------------------
+    let programCamera = null;            // chosen id, or null for the first camera
+    const programCameraId = () => cameraList.some(c => c.id === programCamera) ? programCamera : cameraList[0]?.id || null;
+    const bugRow = (lane, athlete, time, placed) => {
+        const li = document.createElement('li'); if (placed) li.className = 'placed';
+        const n = document.createElement('span'); n.className = 'lane'; n.textContent = placed ? `${placed}.` : String(lane);
+        const name = document.createElement('span'); name.className = 'name'; name.textContent = athlete?.name || '';
+        if (athlete?.team) { const team = document.createElement('small'); team.textContent = athlete.team; name.append(team); }
+        const t = document.createElement('span'); t.className = 'time'; t.textContent = time;
+        li.append(n, name, t); return li;
+    };
+    /** The picture: the program camera under a lower third built from the timer and the start lists. */
+    function renderProgram() {
+        const id = programCameraId(), player = id ? players.get(id) : null, video = $('programVideo');
+        const source = player?.video.srcObject || null;
+        if (video.srcObject !== source) video.srcObject = source;
+        const picture = !!player?.live;
+        $('stageNote').hidden = picture; $('stageNote').textContent = cameraList.length ? 'Waiting for the camera…' : 'No camera. Add one on the Cameras tab.';
+        const showBug = connected('timer') && latest.event;
+        $('bug').hidden = !showBug;
+        if (showBug) {
+            const roster = rosters.view().get(latest.event), heat = roster?.heats[latest.heat - 1] || [];
+            $('bugEvent').textContent = `EVENT ${latest.event} · HEAT ${latest.heat || '—'}`;
+            $('bugTitle').textContent = roster?.title || '';
+            $('bugClock').textContent = latest.clock || '0:00.0';
+            const finished = latest.lanes.filter(l => l.time && l.place).sort((a, b) => Number(a.place) - Number(b.place));
+            const rows = finished.length ? finished.map(l => bugRow(l.lane, heat[l.lane - 1], l.time, l.place))
+                : latest.lanes.filter((l, i) => heat[i]?.name).map(l => bugRow(l.lane, heat[l.lane - 1], l.time || '', 0));
+            $('bugLanes').replaceChildren(...rows);
+        }
+        $('goLive').disabled = true; $('goLive').title = 'Streaming out is not built yet';
+        $('programStatus').textContent = picture ? 'Program ready · not streaming' : 'Not streaming';
+        // Simulation controls: the made-up console by hand.
+        $('simControls').hidden = !sim.on;
+        if (sim.on) {
+            if (document.activeElement !== $('simEventNo')) $('simEventNo').value = sim.event ?? latest.event ?? '';
+            if (document.activeElement !== $('simHeatNo')) $('simHeatNo').value = sim.heat ?? latest.heat ?? '';
+            $('simRace').setAttribute('aria-pressed', String(sim.racing));
+        }
+        return picture;
     }
 
     // ---- display -------------------------------------------------------------------------
@@ -176,19 +233,21 @@
         return tr;
     };
     const ago = at => `${Math.round((performance.now() - at) / 1000)} s ago`;
-    /** Which parts of the meet are ready to go. A tab's dot is green while its part is. */
-    function readiness() {
-        return {
-            stream: relay.listening && relay.clients > 0,                       // overlays are listening
+    function render() {
+        const camerasLive = renderCameras();
+        const ready = {
+            stream: renderProgram(),                                            // the program has a picture
             timer: connected('timer') && latest.blocks > 0 && !latest.stale,    // the console's clock is arriving
             events: rosters.heats > 0,                                          // start lists in hand
-            cameras: renderCameras(),                                           // a camera's picture is arriving
+            cameras: camerasLive,                                               // a camera's picture is arriving
             theme: false                                                        // not built yet
         };
-    }
-    function render() {
-        const ready = readiness();
-        for (const name of TABS) $('tab-' + name).firstElementChild.dataset.ready = String(ready[name]);
+        for (const name of TABS) {
+            const button = $('tab-' + name);
+            button.firstElementChild.dataset.ready = String(ready[name]);
+            const badge = button.querySelector('.sim-badge'); if (badge) badge.hidden = !(sim.on && SIM_TABS.includes(name));
+        }
+        for (const toggle of document.querySelectorAll('.simToggle')) toggle.checked = sim.on;
         // Timer: only what the console sends.
         $('event').textContent = `${latest.event ?? '—'} / ${latest.heat ?? '—'}`;
         $('clock').textContent = latest.clock || '—:—.—';
@@ -213,14 +272,14 @@
             $('heatCount').textContent = entry ? `of ${entry.heats.length}` : '';
             $('follow').setAttribute('aria-pressed', String(following));
         }
-        // Overlay feed: the server is always on; what changes is who is listening.
+        // Overlay feed, in the Configure dialog.
         const address = `ws://${relay.hosts[0] || 'localhost'}:${relay.port}/`;
         $('relayStatus').textContent = relay.error ? `Not listening · ${relay.error}` : !relay.listening ? 'Starting…'
             : `Listening · overlays connect to ${address}` + (connected('timer') ? '' : ' · waiting for the timer');
         $('clients').textContent = relay.clients;
         $('packets').textContent = packets.toLocaleString();
         $('lastSent').textContent = lastPacketAt === null ? '—' : ago(lastPacketAt);
-        if (visible('stream') && $('packetJson').parentElement.open) $('packetJson').textContent = lastSent ? JSON.stringify(JSON.parse(lastSent), null, 2) : 'No packet yet. Packets go out while the timer is connected and an event and heat are decoded.';
+        if ($('configureDialog').open && $('packetJson').parentElement.open) $('packetJson').textContent = lastSent ? JSON.stringify(JSON.parse(lastSent), null, 2) : 'No packet yet. Packets go out while the timer is connected and an event and heat are decoded.';
         // Ports.
         for (const role of ROLES) {
             const link = links[role];
@@ -246,19 +305,21 @@
         for (const role of ROLES) {
             const select = $(role + 'Port'), current = links[role].path || select.value || remembered[role] || '';
             select.replaceChildren(...ports.map(p => new Option(p.label, p.path)));
-            if (!ports.length) select.append(new Option('No serial ports found', ''));
+            if (!ports.length) select.append(new Option(sim.on ? 'No simulated ports' : 'No serial ports found', ''));
             if (ports.some(p => p.path === current)) select.value = current;
         }
         render();
     }
     async function connect(role, path) {
         hideError();
-        try { await api.serial.open(role, path); remembered[role] = path; api.store.set('ports', remembered); }
-        catch (e) { showError(e); }
+        try {
+            await api.serial.open(role, path);
+            if (!path.startsWith('sim:')) { remembered[role] = path; api.store.set('ports', remembered); }
+        } catch (e) { showError(e); }
         render();
     }
     async function disconnect(role) {
-        remembered[role] = null; api.store.set('ports', remembered);
+        if (!sim.on) { remembered[role] = null; api.store.set('ports', remembered); }
         try { await api.serial.close(role); } catch (e) { showError(e); }
         render();
     }
@@ -273,6 +334,37 @@
     });
     api.serial.onData((role, bytes) => { if (role === 'timer') feedTimer(bytes, performance.now() - timerStart); else onMeetChunk(bytes); });
     api.relay.onStatus(status => { relay = status; render(); });
+
+    // ---- simulation ----------------------------------------------------------------------
+    /** Simulation on: the made-up ports, both connected; off: the real ports, as remembered. */
+    async function applySim(state, first = false) {
+        const was = sim.on; sim = state;
+        if (first || was !== sim.on) {
+            await loadRosters();
+            await refreshPorts();
+            if (sim.on) { await connect('timer', 'sim:timer'); await connect('meet', 'sim:meet'); }
+            else if (!first) for (const role of ROLES) if (remembered[role] && ports.some(p => p.path === remembered[role])) connect(role, remembered[role]);
+        }
+        $('banner').hidden = !sim.on;
+        $('banner').textContent = api.designMode ? 'Design mode in a browser: a made-up meet and a drawn camera, nothing real.'
+            : 'Simulation: a made-up meet on pretend ports' + (sim.ffmpeg ? ' and a test-pattern camera' : '') + '. Nothing here comes from a timing console or Meet Manager.';
+        await refreshCameras();
+        render();
+    }
+    for (const toggle of document.querySelectorAll('.simToggle')) toggle.addEventListener('change', async e => {
+        hideError();
+        try { await api.sim.set(e.target.checked); } catch (err) { showError(err); render(); }
+    });
+    api.sim.onChange(state => applySim(state));
+    const simSet = async (event, heat) => { try { sim = await api.sim.control(event, heat); } catch (e) { showError(e); } render(); };
+    const simEvent = () => sim.event ?? latest.event ?? 1, simHeat = () => sim.heat ?? latest.heat ?? 1;
+    $('simEventUp').onclick = () => simSet(simEvent() + 1, 1);
+    $('simEventDown').onclick = () => simSet(Math.max(1, simEvent() - 1), 1);
+    $('simHeatUp').onclick = () => simSet(simEvent(), simHeat() + 1);
+    $('simHeatDown').onclick = () => simSet(simEvent(), Math.max(1, simHeat() - 1));
+    $('simEventNo').onchange = e => { const n = Math.floor(Number(e.target.value)); if (n >= 1) simSet(n, 1); else render(); };
+    $('simHeatNo').onchange = e => { const n = Math.floor(Number(e.target.value)); if (n >= 1) simSet(simEvent(), n); else render(); };
+    $('simRace').onclick = async () => { try { sim = await api.sim.race(!sim.racing); } catch (e) { showError(e); } render(); };
 
     // ---- tabs ----------------------------------------------------------------------------
     function showTab(name, remember = true) {
@@ -294,7 +386,9 @@
         $(role + 'Connect').onclick = () => connect(role, $(role + 'Port').value);
         $(role + 'Disconnect').onclick = () => disconnect(role);
     }
+    $('configure').onclick = () => { $('configureDialog').showModal(); render(); };
     $('packetJson').parentElement.addEventListener('toggle', render);
+    $('programCamera').onchange = e => { programCamera = e.target.value || null; api.store.set('programCamera', programCamera).catch(() => {}); render(); };
     $('camAdd').onclick = addCamera;
     $('camUrl').addEventListener('keydown', e => { if (e.key === 'Enter') addCamera(); });
     api.cameras.onStatus(state => { const wasRunning = engine.running; engine = state; if (engine.running && !wasRunning) refreshCameras(); else render(); });
@@ -317,27 +411,23 @@
     };
     $('clearRosters').onclick = () => {
         rosters.clear(); lastRecord = null; lastStartList = null; selected.event = null; selected.heat = 1; following = true;
-        $('fileStatus').textContent = ''; api.store.set('rosters', null).catch(() => {}); lastSent = ''; render();
+        $('fileStatus').textContent = ''; api.store.set(rosterKey(), null).catch(() => {}); lastSent = ''; render();
     };
 
     async function init() {
         const info = await api.info();
-        if (info.simulated) {
-            $('banner').hidden = false;
-            $('banner').textContent = 'Simulated ports. The Timer and Events tabs connect to a made-up meet that repeats; nothing here comes from a timing console or Meet Manager.';
-        }
-        try { rosters = GENSER.RosterStore.fromJSON(await api.store.get('rosters')); } catch (e) { /* damaged data: start empty */ }
+        document.title = `Lanecast ${info.version}`;
         remembered = (await api.store.get('ports')) || {};
+        programCamera = (await api.store.get('programCamera')) || null;
         showTab((await api.store.get('tab')) || 'stream', false);
         relay = await api.relay.status();
         engine = await api.cameras.status();
         for (const role of ROLES) links[role] = await api.serial.state(role);
-        await refreshPorts();
-        await refreshCameras();
-        setInterval(refreshCameras, 3000);
-        // A port that was connected when the app last closed is connected again.
-        for (const role of ROLES) if (remembered[role] && ports.some(p => p.path === remembered[role]) && links[role].state === 'closed') connect(role, remembered[role]);
+        await applySim(await api.sim.state(), true);
+        // Real ports that were connected when the app last closed are connected again.
+        if (!sim.on) for (const role of ROLES) if (remembered[role] && ports.some(p => p.path === remembered[role]) && links[role].state === 'closed') connect(role, remembered[role]);
         setInterval(refreshPorts, 3000);
+        setInterval(refreshCameras, 3000);
         setInterval(() => { if (connected('timer')) latest = decoder.snapshot(performance.now() - timerStart); publish(); render(); }, 100);
         render();
     }

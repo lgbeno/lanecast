@@ -41,15 +41,7 @@
     function plan(meet) {
         const heats = []; let start = 0;
         for (const e of meet) e.heats.forEach((entries, h) => {
-            const random = rng(e.event * 100 + h);
-            const lanes = Array.from({ length: 8 }, (_, i) => {
-                if (!entries[i]) return null;
-                const final = Math.round(e.seconds * 100 * (1 + random() * 0.18));
-                return { final, split: Math.round(final * (0.46 + random() * 0.03)), place: 0 };
-            });
-            const order = lanes.filter(Boolean).sort((a, b) => a.final - b.final);
-            order.forEach((l, i) => { if (i && l.final <= order[i - 1].final) l.final = order[i - 1].final + 1; l.place = i + 1; });
-            const race = Math.ceil(order.at(-1).final / 10) + AFTER;
+            const { lanes, race } = planLanes(meet, e.event, h + 1);
             heats.push({ event: e.event, heat: h + 1, lanes, start, race, ticks: LINEUP + race + RESULTS });
             start += LINEUP + race + RESULTS;
         });
@@ -77,13 +69,42 @@
         return [control(lane), ...data(String(lane) + (view.place || ' ') + time)];
     }
 
+    /** Each swimmer's split, final time and place for one heat: the meet's entries, or six made-up swimmers. */
+    function planLanes(meet, event, heat) {
+        const e = meet.find(m => m.event === event), entries = e?.heats[heat - 1] || [null, 1, 1, 1, 1, 1, 1, null];
+        const seconds = e?.seconds || 30, random = rng(event * 100 + heat);
+        const lanes = Array.from({ length: 8 }, (_, i) => {
+            if (!entries[i]) return null;
+            const final = Math.round(seconds * 100 * (1 + random() * 0.18));
+            return { final, split: Math.round(final * (0.46 + random() * 0.03)), place: 0 };
+        });
+        const order = lanes.filter(Boolean).sort((a, b) => a.final - b.final);
+        order.forEach((l, i) => { if (i && l.final <= order[i - 1].final) l.final = order[i - 1].final + 1; l.place = i + 1; });
+        return { lanes, race: Math.ceil(order.at(-1).final / 10) + AFTER };
+    }
     class TimerSource {
-        constructor(meet = MEET) { this.heats = plan(meet); this.cycle = this.heats.at(-1).start + this.heats.at(-1).ticks; this.tick = 0; this.turn = 0; }
-        /** What the console shows at a tick. The meet repeats when it ends. */
+        constructor(meet = MEET) { this.meet = meet; this.heats = plan(meet); this.cycle = this.heats.at(-1).start + this.heats.at(-1).ticks; this.tick = 0; this.turn = 0; this.manual = null; }
+        /** Take the console by hand: show this event and heat, lined up at 0:00.0, until race() starts it. */
+        control(event, heat) {
+            event = Math.max(1, Math.min(999, Math.floor(event) || 1)); heat = Math.max(1, Math.min(99, Math.floor(heat) || 1));
+            this.manual = { event, heat, racing: false, startTick: 0, ...planLanes(this.meet, event, heat) };
+        }
+        /** Start or stop the race on the heat set by control(). Stopping returns the clock to 0:00.0. */
+        race(on) { if (!this.manual) this.control(1, 1); this.manual.racing = !!on; this.manual.startTick = this.tick; }
+        /** Hand the console back to the scripted meet. */
+        automatic() { this.manual = null; }
+        /** What the console shows at a tick: by hand if control() was called, else the scripted meet, which repeats. */
         state(tick) {
-            const n = tick % this.cycle, heat = this.heats.find(h => n < h.start + h.ticks), k = n - heat.start;
-            const phase = k < LINEUP ? 'lineup' : k < LINEUP + heat.race ? 'race' : 'results';
-            const tenths = phase === 'lineup' ? 0 : Math.min(k - LINEUP, heat.race - 1);
+            let heat, phase, tenths;
+            if (this.manual) {
+                const m = this.manual; heat = m;
+                tenths = m.racing ? Math.min(tick - m.startTick, m.race - 1) : 0;
+                phase = !m.racing ? 'lineup' : tick - m.startTick < m.race ? 'race' : 'results';
+            } else {
+                const n = tick % this.cycle; heat = this.heats.find(h => n < h.start + h.ticks); const k = n - heat.start;
+                phase = k < LINEUP ? 'lineup' : k < LINEUP + heat.race ? 'race' : 'results';
+                tenths = phase === 'lineup' ? 0 : Math.min(k - LINEUP, heat.race - 1);
+            }
             const lanes = heat.lanes.map(l => {
                 const cs = tenths * 10;
                 if (!l || phase === 'lineup') return {};
