@@ -267,6 +267,7 @@
 
     // ---- program -------------------------------------------------------------------------
     let programCamera = null;            // chosen id, or null for the first camera
+    const live = false;                  // on air: set by the YouTube output once it exists
     const programCameraId = () => cameraList.some(c => c.id === programCamera) ? programCamera : cameraList[0]?.id || null;
     const bugRow = (lane, athlete, time, placed) => {
         const li = document.createElement('li'); if (placed) li.className = 'placed';
@@ -296,7 +297,7 @@
             $('bugLanes').replaceChildren(...rows);
         }
         $('goLive').disabled = true; $('goLive').title = 'Streaming out is not built yet';
-        $('programStatus').textContent = picture ? 'Program ready · not streaming' : 'Not streaming';
+        $('programStatus').textContent = live ? 'Live' : picture ? 'Idle · program ready' : 'Idle';
         return picture;
     }
 
@@ -316,12 +317,14 @@
             cameras: camerasLive,                                               // a camera's picture is arriving
             theme: false                                                        // not built yet
         };
-        const simulatedTab = { stream: anySim(), timer: sim.timer, events: sim.events, cameras: sim.cameras, theme: false };
+        // Stream is idle or live, never simulated: its badge is Live, and only when on air (not built yet).
+        const simulatedTab = { stream: false, timer: sim.timer, events: sim.events, cameras: sim.cameras, theme: false };
         for (const name of TABS) {
             const button = $('tab-' + name);
             button.firstElementChild.dataset.ready = String(ready[name]);
             const badge = button.querySelector('.sim-badge'); if (badge) badge.hidden = !simulatedTab[name];
         }
+        $('liveBadge').hidden = !live;
         for (const toggle of document.querySelectorAll('.simToggle')) toggle.checked = !!sim[toggle.dataset.part];
         // Timer: only what the console sends, and, when simulated, the console's own controls.
         $('event').textContent = `${latest.event ?? '—'} / ${latest.heat ?? '—'}`;

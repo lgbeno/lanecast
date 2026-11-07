@@ -38,7 +38,7 @@ app.on('browser-window-created', (event, win) => {
             badges: ${badges}, shown: document.querySelector('[role=tabpanel]:not([hidden])').id, error: document.getElementById('error').hidden ? '' : ${text('error')} })`);
         console.log(JSON.stringify(start, null, 1));
         check(start.shown === 'stream', 'the Stream tab is shown first: ' + start.shown);
-        check(start.badges === 'stream,timer,events,cameras', 'Sim badges on Stream, Timer, Events and Cameras: ' + start.badges);
+        check(start.badges === 'timer,events,cameras', 'Sim badges on Timer, Events and Cameras, none on Stream: ' + start.badges);
         check(/^Simulated · the pretend console is connected/.test(start.timer) && start.timerControls && start.simPanel, 'timer: pretend console connected, port controls gone, console controls shown');
         check(/^Simulated/.test(start.meet) && start.fetch, 'events: no port, Fetch simulated events in place of Load and Save');
         check(start.camSim && start.camAdd, 'cameras: the simulated camera card replaces Add a camera');
@@ -69,7 +69,7 @@ app.on('browser-window-created', (event, win) => {
             program: document.getElementById('programVideo').videoWidth, note: document.getElementById('stageNote').hidden, bug: !document.getElementById('bug').hidden, pstatus: ${text('programStatus')} })`);
         check(cams.tiles === 1 && /^Live · 1280×720/.test(cams.status[0]) && /drawn pool/.test(cams.media), `the simulated camera is live: ${cams.status.join(' / ')} · ${cams.media}`);
         check(/^Camera engine running/.test(cams.engine), 'camera engine running: ' + cams.engine);
-        check(cams.ready.cameras && cams.ready.stream && cams.program > 0 && cams.note && cams.bug, `program shows the camera under the lower third: ${cams.program}px, ${cams.pstatus}`);
+        check(cams.ready.cameras && cams.ready.stream && cams.program > 0 && cams.note && cams.bug && /^Idle · program ready/.test(cams.pstatus), `program shows the camera under the lower third: ${cams.program}px, ${cams.pstatus}`);
 
         if (shot) {
             for (const t of ['stream', 'timer', 'events', 'cameras']) {
@@ -82,13 +82,13 @@ app.on('browser-window-created', (event, win) => {
         // Simulation is per part: the timer alone goes back to real ports; Events and Cameras stay simulated.
         await js(`document.querySelector('#timer .simToggle').click()`); await wait(1500);
         const timerOff = await js(`({ timer: ${text('timerStatus')}, controls: !document.getElementById('timerPort').parentElement.hidden, panel: document.getElementById('timerSim').hidden, badges: ${badges}, dot: ${dots} })`);
-        check(timerOff.timer === 'Not connected.' && timerOff.controls && timerOff.panel && timerOff.badges === 'stream,events,cameras' && !timerOff.dot.timer, `timer back to real: ${JSON.stringify(timerOff)}`);
+        check(timerOff.timer === 'Not connected.' && timerOff.controls && timerOff.panel && timerOff.badges === 'events,cameras' && !timerOff.dot.timer, `timer back to real: ${JSON.stringify(timerOff)}`);
         await js(`document.querySelector('#cameras .simToggle').click()`); await wait(1000);
         const camOff = await js(`({ tiles: document.querySelectorAll('.tile').length, camAdd: !document.getElementById('camAdd').hidden, badges: ${badges} })`);
-        check(camOff.tiles === 0 && camOff.camAdd && camOff.badges === 'stream,events', `camera back to real: ${JSON.stringify(camOff)}`);
+        check(camOff.tiles === 0 && camOff.camAdd && camOff.badges === 'events', `camera back to real: ${JSON.stringify(camOff)}`);
         await js(`document.querySelector('#timer .simToggle').click()`); await wait(2500);
         const timerOn = await js(`({ timer: ${text('timerStatus')}, badges: ${badges} })`);
-        check(/connected/.test(timerOn.timer) && timerOn.badges === 'stream,timer,events', `timer simulated again reconnects: ${JSON.stringify(timerOn)}`);
+        check(/connected/.test(timerOn.timer) && timerOn.badges === 'timer,events', `timer simulated again reconnects: ${JSON.stringify(timerOn)}`);
 
         socket.close();
         console.log(failed ? 'SMOKE FAILED' : 'SMOKE PASSED');
