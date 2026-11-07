@@ -23,6 +23,8 @@ main.js     window, file dialogs, IPC
 - **The overlay feed is a server inside the app.** Overlays (browser sources in OBS, or Lanecast's own compositor later) connect to `ws://<this machine>:8080/` and receive every packet.
 - **Cameras come through go2rtc**, a single static binary the app spawns with a config it writes (`go2rtc.yaml` in the data folder; API on 127.0.0.1:1984, WebRTC on 8555, RTSP server off). The window plays each camera with a plain `RTCPeerConnection` and a WHEP offer (`POST /api/webrtc?src=<id>`), H.264 passed through untouched. The camera list is Lanecast's; go2rtc is told at start and on each change. If go2rtc dies it is restarted; if ffmpeg is on the PATH go2rtc can also transcode and draw a test pattern (go2rtc feeds ffmpeg's output to itself over its RTSP server, so that server stays on, bound to loopback). WebRTC between the window and go2rtc pairs over the machine's LAN address, not loopback (neither side gathers loopback candidates), so the machine needs a network interface up, which it has whenever it can reach a camera.
 - **The window decodes.** Protocol code lives in `src/protocol/` as plain modules that load in Node and in the page alike, so the tests run without Electron.
+- **Simulation is a runtime switch**, not a build. Main swaps the real ports for the simulated ones (closing whatever is open), adds or removes the test-pattern camera, and keeps simulated start lists under their own key so made-up names never meet real ones. The simulated console can be driven by hand (`Sim.TimerSource#control/race`), which the Stream tab exposes.
+- **Design mode.** Opened in an ordinary browser, `src/renderer/mock.js` installs a stand-in `window.lanecast` (the simulated meet in-page, a canvas as the camera, localStorage as the store), so layout and style can be worked on with a reload instead of an Electron launch. Inside Electron the file does nothing.
 - The window runs sandboxed with context isolation; `src/main/preload.js` is the whole surface it can reach.
 
 ## The packet
@@ -47,7 +49,7 @@ Fields hold what the console displays. `state` is `running`, `reset` (inferred, 
 | Overlay feed out (WebSocket) | Built |
 | Simulated ports | Built (`npm run simulate`) |
 | Camera in | Built for RTSP: go2rtc sidecar → WebRTC → `<video>`, fetched per platform by `scripts/fetch-go2rtc.js` and shipped as an extra resource. NDI later via the NDI SDK runtime and a native binding |
-| Compositing | Next: the window draws camera + overlays at 1080p60 |
+| Compositing | Started: the Stream tab shows the program camera under a lower third drawn from the packet (DOM today; the encoder will need a canvas or capture of this view) |
 | Stream out | After compositing: WebCodecs (hardware H.264 on Mac/Windows) or a bundled ffmpeg encodes; ffmpeg muxes and pushes RTMP to YouTube. On Linux prefer ffmpeg with VAAPI; Chromium's software encoder there is baseline OpenH264 |
 | Installers | CI builds `.dmg`, `.exe`, `.AppImage`/`.deb` on tags; unsigned until there is a certificate |
 

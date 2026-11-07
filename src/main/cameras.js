@@ -101,6 +101,13 @@ class CameraEngine {
         }
         return camera;
     }
+    /** Add or replace a camera with a known id (the test pattern). */
+    async put(camera) {
+        const index = this.cameras.findIndex(c => c.id === camera.id);
+        if (index >= 0) { if (this.cameras[index].url === camera.url) return; this.cameras.splice(index, 1); }
+        this.cameras.push({ id: camera.id, name: String(camera.name || camera.id), url: camera.url }); this.onChange(this.cameras); this.writeConfig();
+        if (this.running) { try { await fetch(`${this.api}/api/streams?name=${encodeURIComponent(camera.id)}&src=${encodeURIComponent(camera.url)}`, { method: 'PUT' }); } catch (e) { /* listed at next start */ } }
+    }
     async remove(id) {
         const index = this.cameras.findIndex(c => c.id === id);
         if (index < 0) return;

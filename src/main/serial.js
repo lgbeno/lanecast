@@ -16,14 +16,15 @@ const SIM_PORTS = [
     { path: 'sim:meet', label: 'Simulated Meet Manager' }
 ];
 
-/** A port of the simulated meet. The meet runs from the first time the console is opened. */
-let epoch = null;
+/** A port of the simulated meet. One console runs from the first time it is opened, so it can be driven by hand across reconnects. */
+let epoch = null, console_ = null;
+const simConsole = () => console_ || (console_ = new Sim.TimerSource());
 class SimPort extends EventEmitter {
     constructor(path) { super(); this.kind = path.slice(4); this.interval = null; this.meetManager = null; this.walking = true; this.isOpen = false; }
     open(callback) {
         if (this.kind === 'timer') {
             if (epoch === null) epoch = performance.now();
-            const source = new Sim.TimerSource(); source.seek(performance.now() - epoch);
+            const source = simConsole(); source.seek(performance.now() - epoch);
             this.interval = setInterval(() => { const bytes = source.read(performance.now() - epoch); if (bytes.length) this.emit('data', Buffer.from(bytes)); }, 25);
         } else {
             // Meet Manager's transmit line: a scoreboard computer walks the meet until this app sends a request itself.
@@ -48,6 +49,16 @@ class SerialRoles {
         this.ports = { timer: null, meet: null }; this.want = { timer: null, meet: null }; this.retry = { timer: null, meet: null };
         this.states = { timer: { state: 'closed', message: '', path: null }, meet: { state: 'closed', message: '', path: null } };
     }
+    /** Switch between the real ports and the simulated ones. Whatever is open is closed first. */
+    async setSimulated(on) {
+        if (!!on === this.simulated) return;
+        for (const role of Object.keys(ROLES)) await this.close(role);
+        this.simulated = !!on;
+    }
+    /** The simulated console by hand: { event, heat, racing } while it is, null while it runs the scripted meet. */
+    simState() { const m = simConsole().manual; return m ? { event: m.event, heat: m.heat, racing: m.racing } : null; }
+    simControl(event, heat) { simConsole().control(event, heat); return this.simState(); }
+    simRace(on) { simConsole().race(on); return this.simState(); }
     async list() {
         if (this.simulated) return SIM_PORTS;
         const { SerialPort } = require('serialport');

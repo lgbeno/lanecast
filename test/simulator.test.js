@@ -27,4 +27,23 @@ test('the simulated Meet Manager walks the meet and answers requests', () => {
     const store = new GENSER.RosterStore(); for (const r of got) store.add(r);
     assert.equal(store.heats, 5); assert.equal(store.events.size, 3);
 });
+test('the console can be driven by hand: pick a heat, start the race, stop it', () => {
+    const source = new Sim.TimerSource(), d = new CTS.Decoder();
+    const run = (from, to) => { for (let ms = from; ms <= to; ms += 25) { const b = source.read(ms); if (b.length) d.feed(b, ms); } return d.snapshot(to); };
+    source.control(12, 3);
+    let s = run(0, 3000);
+    assert.equal(s.event, 12); assert.equal(s.heat, 3); assert.equal(s.clock, '0:00.0'); assert.equal(s.state, 'reset');
+    source.race(true);
+    s = run(3025, 8000);
+    assert.equal(s.state, 'running'); assert.equal(s.clock, '0:04.9');     // five seconds in; the newest block commits with the next control byte
+    assert(s.lanes.some(l => l.followsClock), 'lanes follow the clock during the race');
+    s = run(8025, 60000);                                                  // a made-up event: ~30 s swims, then the clock holds
+    assert(s.lanes.filter(l => l.time && l.place).length >= 6, 'six made-up swimmers finish with places');
+    assert.equal(s.state, 'unknown', 'the clock has stopped');
+    source.race(false);
+    s = run(60025, 62000);
+    assert.equal(s.clock, '0:00.0'); assert.equal(s.event, 12); assert(s.lanes.every(l => !l.time), 'stopping lines the heat up again');
+    source.control(1, 2); s = run(62025, 63000); assert.equal(s.heat, 2);
+    source.automatic(); s = run(63025, 64000); assert.equal(s.event, 1);  // back to the scripted meet, wherever it is
+});
 console.log(`${test.count()} simulator test groups passed`);
