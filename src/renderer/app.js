@@ -345,7 +345,8 @@
         $('saveFiles').disabled = !rosters.events.size;
         $('clearRosters').disabled = !rosters.heats && !lastStartList;
         $('meetHead').textContent = sim.events ? 'Simulated Meet Manager' : 'Meet Manager';
-        $('fetchSim').hidden = !sim.events;
+        // Simulated: made-up events are fetched, not loaded or saved.
+        $('fetchSim').hidden = !sim.events; $('loadFiles').hidden = sim.events; $('saveFiles').hidden = sim.events;
         if (visible('events')) {
             const entry = selected.event ? rosters.events.get(selected.event) : null, heat = entry?.heats[selected.heat - 1];
             if (document.activeElement !== $('viewEventNo')) $('viewEventNo').value = selected.event ?? '';
@@ -380,7 +381,7 @@
             : timer.state !== 'open' ? 'Not connected.'
             : !latest.bytes ? 'Connected · no data yet'
             : latest.blocks ? 'Connected · receiving' : 'Connected · bytes arriving but nothing decodes. Is this the console’s scoreboard line?';
-        $('meetStatus').textContent = sim.events ? 'Simulated · start lists come from Fetch simulated events, or from Load'
+        $('meetStatus').textContent = sim.events ? 'Simulated · start lists come from Fetch simulated events'
             : meet.state === 'connecting' ? 'Connecting…' : meet.state === 'retrying' || meet.state === 'error' ? meet.message
             : meet.state !== 'open' ? 'Not connected.'
             : parser.records ? `Connected · ${plural(parser.records, 'start list')} received · last was event ${lastRecord.event} heat ${lastRecord.heat}, ${ago(lastRecordAt)}`

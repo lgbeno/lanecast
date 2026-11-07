@@ -34,13 +34,13 @@ app.on('browser-window-created', (event, win) => {
 
         // Everything simulated at start: the pretend console connects by itself, no port controls show.
         const start = await js(`({ timer: ${text('timerStatus')}, timerControls: document.getElementById('timerPort').parentElement.hidden, simPanel: !document.getElementById('timerSim').hidden,
-            meet: ${text('meetStatus')}, fetch: !document.getElementById('fetchSim').hidden, camSim: !document.getElementById('camSim').hidden, camAdd: document.getElementById('camAdd').hidden,
+            meet: ${text('meetStatus')}, fetch: !document.getElementById('fetchSim').hidden && document.getElementById('loadFiles').hidden && document.getElementById('saveFiles').hidden, camSim: !document.getElementById('camSim').hidden, camAdd: document.getElementById('camAdd').hidden,
             badges: ${badges}, shown: document.querySelector('[role=tabpanel]:not([hidden])').id, error: document.getElementById('error').hidden ? '' : ${text('error')} })`);
         console.log(JSON.stringify(start, null, 1));
         check(start.shown === 'stream', 'the Stream tab is shown first: ' + start.shown);
         check(start.badges === 'stream,timer,events,cameras', 'Sim badges on Stream, Timer, Events and Cameras: ' + start.badges);
         check(/^Simulated · the pretend console is connected/.test(start.timer) && start.timerControls && start.simPanel, 'timer: pretend console connected, port controls gone, console controls shown');
-        check(/^Simulated/.test(start.meet) && start.fetch, 'events: no port, Fetch simulated events offered');
+        check(/^Simulated/.test(start.meet) && start.fetch, 'events: no port, Fetch simulated events in place of Load and Save');
         check(start.camSim && start.camAdd, 'cameras: the simulated camera card replaces Add a camera');
         check(!start.error, 'no error shown: ' + start.error);
 
