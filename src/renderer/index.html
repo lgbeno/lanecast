@@ -33,6 +33,14 @@
 <button id="goLive" class="primary live">Go Live</button><button id="configure">Configure</button>
 <span id="programStatus" class="small">Not streaming</span>
 </div>
+<details id="simConsole" class="sim-panel" hidden><summary><span class="eyebrow">SIMULATED CONSOLE</span><span id="simSummary" class="small"></span></summary>
+<div class="actions">
+<div class="stepper"><button id="simEventDown" class="step" type="button" title="Previous event">−</button><input id="simEventNo" type="number" min="1" max="999" aria-label="Event"><button id="simEventUp" class="step" type="button" title="Next event">+</button></div><span class="small">event</span>
+<div class="stepper"><button id="simHeatDown" class="step" type="button" title="Previous heat">−</button><input id="simHeatNo" type="number" min="1" max="99" aria-label="Heat"><button id="simHeatUp" class="step" type="button" title="Next heat">+</button></div><span class="small">heat</span>
+</div>
+<div class="actions"><button id="simRun" class="latch" type="button" aria-pressed="false" title="Lineup, race, results, next heat, through every event loaded, round and round">Run the meet</button><button id="simRace" class="latch" type="button" aria-pressed="false" title="Start and stop a race on this heat">Race this heat</button></div>
+<p id="simNote" class="small"></p>
+</details>
 </div>
 <dialog id="configureDialog" class="wide"><form method="dialog"><h3>Configure the stream</h3>
 <div class="field"><label for="programCamera">Program camera</label><select id="programCamera"></select></div>
@@ -52,15 +60,7 @@
 <div class="actions when-real"><select id="timerPort" aria-label="Timer port"></select><button id="timerConnect" class="primary">Connect</button><button id="timerDisconnect" disabled>Disconnect</button></div>
 <p id="timerStatus" class="small">Not connected.</p>
 <div class="readout"><div><p class="eyebrow">CLOCK</p><strong id="clock">—:—.—</strong></div><div><p class="eyebrow">EVENT / HEAT</p><strong id="event">— / —</strong></div><div><p class="eyebrow">STATE</p><span id="raceState" class="badge">UNKNOWN</span></div></div>
-<div id="timerSim" class="sim-panel" hidden>
-<p class="eyebrow">SIMULATED CONSOLE</p>
-<div class="actions">
-<div class="stepper"><button id="simEventDown" class="step" type="button" title="Previous event">−</button><input id="simEventNo" type="number" min="1" max="999" aria-label="Event"><button id="simEventUp" class="step" type="button" title="Next event">+</button></div><span class="small">event</span>
-<div class="stepper"><button id="simHeatDown" class="step" type="button" title="Previous heat">−</button><input id="simHeatNo" type="number" min="1" max="99" aria-label="Heat"><button id="simHeatUp" class="step" type="button" title="Next heat">+</button></div><span class="small">heat</span>
-</div>
-<div class="actions"><button id="simRun" class="latch" type="button" aria-pressed="false" title="Lineup, race, results, next heat, through every event loaded, round and round">Run the meet</button><button id="simRace" class="latch" type="button" aria-pressed="false" title="Start and stop a race on this heat">Race this heat</button></div>
-<p id="simNote" class="small"></p>
-</div></article>
+</article>
 <article><h2>Lanes</h2>
 <table class="data"><thead><tr><th>Lane</th><th>Place</th><th>Time</th></tr></thead><tbody id="lanes"></tbody></table></article>
 </div></section>
