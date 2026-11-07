@@ -338,11 +338,9 @@
         if (sim.timer) {
             if (document.activeElement !== $('simEventNo')) $('simEventNo').value = sim.event ?? '';
             if (document.activeElement !== $('simHeatNo')) $('simHeatNo').value = sim.heat ?? '';
-            $('simRun').setAttribute('aria-pressed', String(sim.running)); $('simRace').setAttribute('aria-pressed', String(sim.racing));
-            const doing = sim.running ? `Running the meet through ${rosters.events.size ? plural(rosters.events.size, 'loaded event') : 'the built-in meet'}`
-                : sim.racing ? `Racing event ${sim.event} heat ${sim.heat}` : `Lined up on event ${sim.event} heat ${sim.heat}`;
-            $('simSummary').textContent = doing;
-            $('simNote').textContent = sim.running ? 'Lineup, race, results, next heat, round and round.' : rosters.events.size ? 'Step through the events loaded; race this heat, or run the meet from here.' : 'No start lists loaded, so lanes are made up. Fetch or load some on the Events tab.';
+            $('simRun').setAttribute('aria-pressed', String(sim.running));
+            $('simSummary').textContent = sim.running ? `Running · event ${sim.event} heat ${sim.heat}` + (rosters.events.size ? ` of ${plural(rosters.events.size, 'loaded event')}` : ' of the built-in meet')
+                : `Queued · event ${sim.event} heat ${sim.heat}` + (rosters.events.size ? '' : ' · no start lists loaded, lanes made up');
         }
         // Events: how much is stored, what arrived last, and the selected start list.
         $('eventsLoaded').textContent = rosters.events.size;
@@ -470,7 +468,6 @@
     $('simHeatNo').onchange = e => { const n = Math.floor(Number(e.target.value)); if (n >= 1) simCall(api.sim.control(simEvent(), n)); else render(); };
     $('simRun').onclick = () => simCall(api.sim.run(!sim.running, simEvent(), simHeat()));
     $('simConsole').addEventListener('toggle', () => api.store.set('simConsoleOpen', $('simConsole').open).catch(() => {}));
-    $('simRace').onclick = () => simCall(api.sim.race(!sim.racing));
     $('fetchSim').onclick = fetchSimulatedEvents;
     $('chooseMedia').onclick = async () => { hideError(); try { await api.sim.chooseMedia(); } catch (e) { showError(e); } };
     $('clearMedia').onclick = async () => { hideError(); try { await api.sim.clearMedia(); } catch (e) { showError(e); } };

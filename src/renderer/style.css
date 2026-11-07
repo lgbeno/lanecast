@@ -38,8 +38,12 @@ p{color:var(--muted);margin:8px 0 16px}
 .sim-panel summary::-webkit-details-marker{display:none}
 .sim-panel summary::before{content:"▸";color:var(--sim);font-size:12px;transition:transform .15s}
 .sim-panel[open] summary::before{transform:rotate(90deg)}
-.sim-panel .eyebrow{color:var(--sim);margin:0}
-.sim-panel .actions:first-of-type{margin-top:0}
+.sim-panel summary .eyebrow{color:var(--sim);margin:0}
+.sim-row{display:flex;align-items:flex-end;gap:22px;padding:2px 0 12px}
+.sim-row .eyebrow{margin:0 0 6px;color:var(--muted)}
+.sim-row .stepper{border:1px solid #3a4f63;border-radius:8px;padding:3px;background:#0c1620}
+.sim-row .stepper input{border:0;background:transparent}
+.sim-row .latch{margin:0;padding:11px 22px;font-size:14px}
 .sim-panel .stepper input{width:56px;font-size:20px;padding:3px}
 .sim-panel .step{padding:7px 10px;font-size:14px}
 .sim-panel .latch{margin-left:0;padding:9px 14px}
