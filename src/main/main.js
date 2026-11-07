@@ -5,21 +5,26 @@
  *   cameras     -> go2rtc -> window (WebRTC)
  */
 'use strict';
-const { app, BrowserWindow, ipcMain, dialog } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, protocol, net } = require('electron');
 const path = require('node:path');
 const fs = require('node:fs/promises');
+const { pathToFileURL } = require('node:url');
 const { SerialRoles } = require('./serial');
 const { Relay } = require('./relay');
 const { Store } = require('./store');
 const { CameraEngine } = require('./cameras');
 
-const PATTERN = { id: 'cam-pattern', name: 'Test pattern', url: 'ffmpeg:virtual?video=testsrc&size=1280x720#video=h264' };
 const PARTS = ['timer', 'events', 'cameras'];
+const IMAGES = ['png', 'jpg', 'jpeg', 'gif', 'webp'], VIDEOS = ['mp4', 'm4v', 'mov', 'webm'];
 let win = null, serial = null, relay = null, store = null, cameras = null;
 // Each part can be simulated on its own: the timer, the meet data, the cameras.
 const simulated = { timer: false, events: false, cameras: false };
+let simMedia = null;             // the simulated camera's picture: { path, name, kind: 'image' | 'video' }
 const allSimulated = process.argv.includes('--simulate') || process.env.LANECAST_SIMULATE === '1';
 const send = (channel, ...args) => { if (win && !win.isDestroyed()) win.webContents.send(channel, ...args); };
+
+// media://sim serves the chosen photo or video to the window, and nothing else.
+protocol.registerSchemesAsPrivileged([{ scheme: 'media', privileges: { stream: true, supportFetchAPI: true, secure: true } }]);
 
 function createWindow() {
     win = new BrowserWindow({
@@ -30,33 +35,47 @@ function createWindow() {
     win.on('closed', () => { win = null; });
 }
 
-/** Simulate one part, or 'all': the made-up meet's port instead of a real one, or a test-pattern camera when ffmpeg can draw one. */
+/** Simulate one part: the made-up console on a pretend port, start lists from Load or Fetch, or a picture standing in for the camera. */
 async function setSimulated(part, on) {
-    on = !!on;
-    for (const p of part === 'all' ? PARTS : PARTS.includes(part) ? [part] : []) {
-        simulated[p] = on;
-        if (p === 'timer') await serial.setSimulated('timer', on);
-        if (p === 'events') await serial.setSimulated('meet', on);
-        if (p === 'cameras') { if (on && cameras.ffmpeg) await cameras.put(PATTERN); else await cameras.remove(PATTERN.id); }
-    }
+    if (!PARTS.includes(part)) throw new Error('Unknown part');
+    simulated[part] = !!on;
+    if (part === 'timer') await serial.setSimulated('timer', !!on);
     store.set('simulate', { ...simulated });
     send('sim:changed', simState());
 }
-const simState = () => ({ ...simulated, ffmpeg: !!cameras?.ffmpeg, ...(serial?.simState() || { event: null, heat: null, racing: false }) });
+const mediaDescriptor = () => simMedia ? { name: simMedia.name, kind: simMedia.kind, url: `media://sim/${encodeURIComponent(simMedia.name)}?v=${simMedia.version}` } : null;
+const simState = () => ({ ...simulated, media: mediaDescriptor(), ...(serial ? serial.simState() : { event: null, heat: null, running: false, racing: false }) });
+async function setMedia(file) {
+    if (!file) simMedia = null;
+    else {
+        const ext = path.extname(file).slice(1).toLowerCase();
+        const kind = IMAGES.includes(ext) ? 'image' : VIDEOS.includes(ext) ? 'video' : null;
+        if (!kind) throw new Error('Choose a photo (png, jpg, gif, webp) or a video (mp4, mov, m4v, webm)');
+        await fs.access(file);
+        simMedia = { path: file, name: path.basename(file), kind, version: Date.now() };
+    }
+    store.set('simMedia', simMedia ? { path: simMedia.path } : null);
+    send('sim:changed', simState());
+}
 
 app.whenReady().then(async () => {
     store = new Store(path.join(app.getPath('userData'), 'lanecast.json'));
     await store.load();
     const saved = store.get('simulate', {});
     for (const p of PARTS) simulated[p] = allSimulated || !!(saved && saved[p]);
-    serial = new SerialRoles({ simulated: { timer: simulated.timer, meet: simulated.events }, onData: (role, bytes) => send('serial:data', role, bytes), onState: (role, state) => send('serial:state', role, state) });
+    try { const m = store.get('simMedia'); if (m && m.path) await setMedia(m.path); } catch (e) { simMedia = null; }
+    protocol.handle('media', request => {
+        const url = new URL(request.url);
+        if (!simMedia || url.hostname !== 'sim') return new Response('', { status: 404 });
+        return net.fetch(pathToFileURL(simMedia.path).href, { headers: request.headers });
+    });
+    serial = new SerialRoles({ simulated: { timer: simulated.timer }, onData: (role, bytes) => send('serial:data', role, bytes), onState: (role, state) => send('serial:state', role, state) });
     relay = new Relay({ port: Number(store.get('relayPort', 8080)) || 8080, onStatus: status => send('relay:status', status) });
     relay.start();
     cameras = new CameraEngine({
         packaged: app.isPackaged, dataDir: app.getPath('userData'), cameras: store.get('cameras', []),
         onChange: list => store.set('cameras', list), onStatus: state => send('cameras:status', state)
     });
-    await setSimulated('cameras', simulated.cameras);
     cameras.start();
     createWindow();
     app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
@@ -76,6 +95,18 @@ ipcMain.handle('sim:state', () => simState());
 ipcMain.handle('sim:set', (event, part, on) => setSimulated(String(part), on));
 ipcMain.handle('sim:control', (event, e, h) => { serial.simControl(Number(e), Number(h)); return simState(); });
 ipcMain.handle('sim:race', (event, on) => { serial.simRace(!!on); return simState(); });
+ipcMain.handle('sim:run', (event, on, e, h) => { serial.simRun(!!on, e === undefined || e === null ? undefined : Number(e), Number(h) || 1); return simState(); });
+ipcMain.handle('sim:schedule', (event, meet) => { serial.simSchedule(meet); return simState(); });
+ipcMain.handle('sim:chooseMedia', async () => {
+    const { canceled, filePaths } = await dialog.showOpenDialog(win, {
+        title: 'A photo or video from the camera’s view', properties: ['openFile'],
+        filters: [{ name: 'Photos and videos', extensions: [...IMAGES, ...VIDEOS] }, { name: 'Photos', extensions: IMAGES }, { name: 'Videos', extensions: VIDEOS }]
+    });
+    if (canceled || !filePaths.length) return mediaDescriptor();
+    await setMedia(filePaths[0]);
+    return mediaDescriptor();
+});
+ipcMain.handle('sim:clearMedia', async () => { await setMedia(null); return null; });
 ipcMain.handle('relay:status', () => relay.status());
 ipcMain.on('relay:send', (event, text) => relay.broadcast(text));
 ipcMain.handle('cameras:status', () => cameras.state());

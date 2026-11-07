@@ -46,4 +46,36 @@ test('the console can be driven by hand: pick a heat, start the race, stop it', 
     source.control(1, 2); s = run(62025, 63000); assert.equal(s.heat, 2);
     source.automatic(); s = run(63025, 64000); assert.equal(s.event, 1);  // back to the scripted meet, wherever it is
 });
+test('a made-up meet leans short, has names in its lanes, and times itself by the title', () => {
+    const meet = Sim.generateMeet({ events: 60, seed: 7 });
+    assert.equal(meet.length, 60); assert.equal(meet[0].event, 1); assert.equal(meet[59].event, 60);
+    const distances = meet.map(e => Number(/\b(\d+)\b/.exec(e.title.replace(/\d+-\d+|\d+ & \w+/, ''))[1]));
+    assert(distances.filter(d => d <= 100).length >= 45, 'most events are 100 or shorter');
+    assert(!distances.some(d => d > 200), 'nothing longer than a 200');
+    assert(meet.filter(e => /Relay/.test(e.title)).length >= 8, 'relays turn up');
+    for (const e of meet) for (const heat of e.heats) {
+        assert.equal(heat.length, 10);
+        const swimmers = heat.filter(Boolean);
+        assert(swimmers.length >= 5 && swimmers.length <= 8);
+        for (const [name, team] of swimmers) { assert(/\S/.test(name)); assert(Sim.TEAMS ? true : /^[A-Z]{4}$/.test(team)); }
+    }
+    assert.equal(Sim.secondsFor('Girls 9-10 50 Free'), 31); assert.equal(Sim.secondsFor('Boys 13-14 100 Breast'), 81);
+    assert.equal(Sim.secondsFor('Mixed 11-12 200 Free Relay'), 124); assert.equal(Sim.secondsFor(''), 31);
+    assert.deepEqual(Sim.generateMeet({ events: 3, seed: 1 }), Sim.generateMeet({ events: 3, seed: 1 }), 'the same seed gives the same meet');
+});
+test('the console runs whatever meet it is given, from the heat asked for, round and round', () => {
+    const source = new Sim.TimerSource(Sim.generateMeet({ events: 4, seed: 3, from: 10 })), d = new CTS.Decoder();
+    const run = (from, to) => { for (let ms = from; ms <= to; ms += 25) { const b = source.read(ms); if (b.length) d.feed(b, ms); } return d.snapshot(to); };
+    assert.deepEqual(source.status(), { event: 10, heat: 1, running: true, racing: false });
+    source.run(true, 12, 1);
+    let s = run(0, 2000);
+    assert.equal(s.event, 12); assert.equal(s.heat, 1); assert.equal(s.clock, '0:00.0');
+    s = run(2025, 20000); assert.equal(s.event, 12); assert.equal(s.state, 'running');     // past the 8 s lineup, racing
+    const seen = new Set(); for (let ms = 20025; ms <= 400000; ms += 25) { const b = source.read(ms); if (b.length) { d.feed(b, ms); seen.add(d.snapshot(ms).event); } }
+    assert.deepEqual([...seen].sort((a, b) => a - b), [10, 11, 12, 13], 'the whole meet comes round, wrapping to the first event');
+    source.run(false); const c = source.status(); assert.equal(c.running, false); assert.equal(c.racing, false);
+    source.setMeet(Sim.generateMeet({ events: 2, seed: 9, from: 40 }));          // start lists arrive: the schedule changes under it
+    source.run(true, 41, 2); assert.equal(source.status().event, 41);
+    source.run(true, 99, 1); assert.equal(source.status().event, 40, 'an event that is not in the meet wraps to the start');
+});
 console.log(`${test.count()} simulator test groups passed`);
