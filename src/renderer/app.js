@@ -95,6 +95,80 @@
         api.relay.send(serialized); lastSent = serialized; lastSendAt = now; packets++; lastPacketAt = now;
     }
 
+    // ---- cameras -------------------------------------------------------------------------
+    let engine = { running: false, error: '', api: '', version: '', installed: false, ffmpeg: false };
+    let cameraList = [];                 // [{ id, name, url, producers, consumers }]
+    const players = new Map();           // id -> Player
+    /** One camera's picture, pulled from the engine over WebRTC (WHEP). Reconnects by itself. */
+    class Player {
+        constructor(id, video) { this.id = id; this.video = video; this.pc = null; this.timer = null; this.stopped = false; this.frames = 0; this.frameAt = 0; this.startedAt = performance.now(); this.start(); }
+        async start() {
+            if (this.stopped) return;
+            this.close();
+            const pc = this.pc = new RTCPeerConnection({ iceServers: [] });
+            pc.addTransceiver('video', { direction: 'recvonly' }); pc.addTransceiver('audio', { direction: 'recvonly' });
+            pc.ontrack = e => { if (this.pc === pc) this.video.srcObject = e.streams[0]; };
+            pc.onconnectionstatechange = () => { if (this.pc === pc && ['failed', 'disconnected', 'closed'].includes(pc.connectionState)) this.later(); };
+            try {
+                await pc.setLocalDescription(await pc.createOffer());
+                await new Promise(resolve => { if (pc.iceGatheringState === 'complete') resolve(); else { pc.onicegatheringstatechange = () => pc.iceGatheringState === 'complete' && resolve(); setTimeout(resolve, 1000); } });
+                const res = await fetch(`${engine.api}/api/webrtc?src=${encodeURIComponent(this.id)}`, { method: 'POST', headers: { 'Content-Type': 'application/sdp' }, body: pc.localDescription.sdp });
+                if (!res.ok) throw new Error(`engine answered ${res.status}`);
+                if (this.pc === pc) await pc.setRemoteDescription({ type: 'answer', sdp: await res.text() });
+            } catch (e) { if (this.pc === pc) this.later(); }
+        }
+        later() { clearTimeout(this.timer); this.timer = setTimeout(() => this.start(), 2000); }
+        close() { if (this.pc) { this.pc.onconnectionstatechange = null; this.pc.close(); this.pc = null; } }
+        stop() { this.stopped = true; clearTimeout(this.timer); this.close(); this.video.srcObject = null; }
+        /** Frames are still arriving: checked once a second from the render loop. */
+        get live() {
+            const q = this.video.getVideoPlaybackQuality ? this.video.getVideoPlaybackQuality().totalVideoFrames : 0, now = performance.now();
+            if (q > this.frames) { this.frames = q; this.frameAt = now; }
+            return this.frames > 0 && now - this.frameAt < 2000 && this.video.videoWidth > 0;
+        }
+    }
+    const tileFor = camera => {
+        const figure = document.createElement('figure'); figure.className = 'tile'; figure.dataset.id = camera.id;
+        const video = document.createElement('video'); video.autoplay = true; video.muted = true; video.playsInline = true;
+        const caption = document.createElement('figcaption'), name = document.createElement('strong'), status = document.createElement('span'), remove = document.createElement('button');
+        name.textContent = camera.name; status.className = 'small'; status.textContent = 'Connecting…';
+        remove.className = 'quiet'; remove.type = 'button'; remove.textContent = 'Remove'; remove.title = camera.url;
+        remove.onclick = async () => { remove.disabled = true; try { await api.cameras.remove(camera.id); } catch (e) { showError(e); } await refreshCameras(); };
+        caption.append(name, status, remove); figure.append(video, caption);
+        players.set(camera.id, new Player(camera.id, video));
+        return figure;
+    };
+    async function refreshCameras() {
+        try { cameraList = await api.cameras.list(); } catch (e) { cameraList = []; }
+        const list = $('cameraList'), have = new Set(cameraList.map(c => c.id));
+        for (const figure of [...list.children]) if (!have.has(figure.dataset.id)) { players.get(figure.dataset.id)?.stop(); players.delete(figure.dataset.id); figure.remove(); }
+        if (engine.running) for (const camera of cameraList) if (!players.has(camera.id)) list.append(tileFor(camera));
+        render();
+    }
+    async function addCamera() {
+        hideError(); $('camAdd').disabled = true; $('camAddStatus').textContent = 'Adding…';
+        try {
+            const camera = await api.cameras.add({ name: $('camName').value, url: $('camUrl').value });
+            $('camName').value = ''; $('camUrl').value = ''; $('camAddStatus').textContent = `Added ${camera.name}.`;
+            await refreshCameras();
+        } catch (e) { $('camAddStatus').textContent = e.message.replace(/^Error invoking remote method '[^']+': Error: /, ''); }
+        $('camAdd').disabled = false;
+    }
+    function renderCameras() {
+        const live = [...players.values()].filter(p => p.live);
+        $('engineStatus').textContent = !engine.installed ? 'The camera engine (go2rtc) is not in this build.' : engine.error ? `Camera engine · ${engine.error}`
+            : !engine.running ? 'Starting the camera engine…' : `Camera engine running${engine.version ? ' · go2rtc ' + engine.version : ''}${engine.ffmpeg ? '' : ' · ffmpeg not found, so cameras must send H.264'}`;
+        $('noCameras').hidden = cameraList.length > 0;
+        for (const figure of $('cameraList').children) {
+            const player = players.get(figure.dataset.id), status = figure.querySelector('.small');
+            if (!player) continue;
+            const v = player.video;
+            if (player.live) { status.textContent = `Live · ${v.videoWidth}×${v.videoHeight}`; status.className = 'small live'; }
+            else { status.className = 'small'; status.textContent = performance.now() - player.startedAt < 8000 ? 'Connecting…' : 'No video yet · check the address, and that the camera sends H.264'; }
+        }
+        return live.length > 0;
+    }
+
     // ---- display -------------------------------------------------------------------------
     const row = cells => {
         const tr = document.createElement('tr');
@@ -108,7 +182,7 @@
             stream: relay.listening && relay.clients > 0,                       // overlays are listening
             timer: connected('timer') && latest.blocks > 0 && !latest.stale,    // the console's clock is arriving
             events: rosters.heats > 0,                                          // start lists in hand
-            cameras: false,                                                     // not built yet
+            cameras: renderCameras(),                                           // a camera's picture is arriving
             theme: false                                                        // not built yet
         };
     }
@@ -221,6 +295,9 @@
         $(role + 'Disconnect').onclick = () => disconnect(role);
     }
     $('packetJson').parentElement.addEventListener('toggle', render);
+    $('camAdd').onclick = addCamera;
+    $('camUrl').addEventListener('keydown', e => { if (e.key === 'Enter') addCamera(); });
+    api.cameras.onStatus(state => { const wasRunning = engine.running; engine = state; if (engine.running && !wasRunning) refreshCameras(); else render(); });
     $('loadFiles').onclick = loadStartLists;
     $('saveFiles').onclick = saveStartLists;
     // Stepping the event goes through the events stored; typing a number shows that event, stored or not.
@@ -253,8 +330,11 @@
         remembered = (await api.store.get('ports')) || {};
         showTab((await api.store.get('tab')) || 'stream', false);
         relay = await api.relay.status();
+        engine = await api.cameras.status();
         for (const role of ROLES) links[role] = await api.serial.state(role);
         await refreshPorts();
+        await refreshCameras();
+        setInterval(refreshCameras, 3000);
         // A port that was connected when the app last closed is connected again.
         for (const role of ROLES) if (remembered[role] && ports.some(p => p.path === remembered[role]) && links[role].state === 'closed') connect(role, remembered[role]);
         setInterval(refreshPorts, 3000);

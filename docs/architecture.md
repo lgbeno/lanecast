@@ -14,12 +14,14 @@ main process (Node)                               window (Chromium)
 serial.js   timer port  9600 8E1  ──bytes──▶      CTS.Decoder        clock, event/heat, lanes
             meet port   9600 8N1  ──bytes──▶      GENSER.StreamParser → RosterStore   names, teams, titles
 relay.js    WebSocket server :8080 ◀─packet──     Packet.scoreboard()   one JSON object per change
-store.js    settings + start lists (JSON file)
+cameras.js  go2rtc sidecar  RTSP in ──WebRTC──▶   <video> per camera (WHEP from 127.0.0.1:1984)
+store.js    settings, start lists, cameras (JSON file)
 main.js     window, file dialogs, IPC
 ```
 
 - **Serial ports are opened in the main process** with `serialport`, not Web Serial. That means no picker dialog, ports are remembered and reopened at launch, a port that drops out is reopened when it returns, and reading continues when the window is hidden. Each role has fixed line settings; nothing is ever written to either device.
 - **The overlay feed is a server inside the app.** Overlays (browser sources in OBS, or Lanecast's own compositor later) connect to `ws://<this machine>:8080/` and receive every packet.
+- **Cameras come through go2rtc**, a single static binary the app spawns with a config it writes (`go2rtc.yaml` in the data folder; API on 127.0.0.1:1984, WebRTC on 8555, RTSP server off). The window plays each camera with a plain `RTCPeerConnection` and a WHEP offer (`POST /api/webrtc?src=<id>`), H.264 passed through untouched. The camera list is Lanecast's; go2rtc is told at start and on each change. If go2rtc dies it is restarted; if ffmpeg is on the PATH go2rtc can also transcode and draw a test pattern (go2rtc feeds ffmpeg's output to itself over its RTSP server, so that server stays on, bound to loopback). WebRTC between the window and go2rtc pairs over the machine's LAN address, not loopback (neither side gathers loopback candidates), so the machine needs a network interface up, which it has whenever it can reach a camera.
 - **The window decodes.** Protocol code lives in `src/protocol/` as plain modules that load in Node and in the page alike, so the tests run without Electron.
 - The window runs sandboxed with context isolation; `src/main/preload.js` is the whole surface it can reach.
 
@@ -44,8 +46,8 @@ Fields hold what the console displays. `state` is `running`, `reset` (inferred, 
 | Meet data in (Meet Manager GENSER link, .scb files) | Built; parser verified against real captures |
 | Overlay feed out (WebSocket) | Built |
 | Simulated ports | Built (`npm run simulate`) |
-| Camera in | Next. RTSP from the camera through a bundled [go2rtc](https://github.com/AlexxIT/go2rtc) sidecar to WebRTC, played in a `<video>` under the overlays. NDI later via the NDI SDK runtime and a native binding |
-| Compositing | After camera: the window draws camera + overlays at 1080p60 |
+| Camera in | Built for RTSP: go2rtc sidecar → WebRTC → `<video>`, fetched per platform by `scripts/fetch-go2rtc.js` and shipped as an extra resource. NDI later via the NDI SDK runtime and a native binding |
+| Compositing | Next: the window draws camera + overlays at 1080p60 |
 | Stream out | After compositing: WebCodecs (hardware H.264 on Mac/Windows) or a bundled ffmpeg encodes; ffmpeg muxes and pushes RTMP to YouTube. On Linux prefer ffmpeg with VAAPI; Chromium's software encoder there is baseline OpenH264 |
 | Installers | CI builds `.dmg`, `.exe`, `.AppImage`/`.deb` on tags; unsigned until there is a certificate |
 

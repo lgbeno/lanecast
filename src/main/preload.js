@@ -20,6 +20,13 @@ contextBridge.exposeInMainWorld('lanecast', {
         send: text => ipcRenderer.send('relay:send', text),
         onStatus: callback => on('relay:status', callback)
     },
+    cameras: {
+        status: () => invoke('cameras:status'),
+        list: () => invoke('cameras:list'),
+        add: camera => invoke('cameras:add', camera),
+        remove: id => invoke('cameras:remove', id),
+        onStatus: callback => on('cameras:status', callback)
+    },
     store: {
         get: key => invoke('store:get', key),
         set: (key, value) => invoke('store:set', key, value)

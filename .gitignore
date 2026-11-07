@@ -1,6 +1,8 @@
 node_modules/
 dist/
 out/
+# Fetched by scripts/fetch-go2rtc.js at install time.
+vendor/
 *.log
 .DS_Store
 # Serial captures and meet files carry athlete names: keep them out of the repository.

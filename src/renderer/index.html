@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self'; img-src 'self' data:">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self' http://127.0.0.1:*; media-src 'self' blob:">
 <title>Lanecast</title>
 <link rel="stylesheet" href="style.css">
 <script defer src="../protocol/cts.js"></script><script defer src="../protocol/genser.js"></script><script defer src="../protocol/packet.js"></script><script defer src="app.js"></script>
@@ -54,8 +54,17 @@
 </div></section>
 
 <section id="cameras" role="tabpanel" aria-labelledby="tab-cameras" hidden>
-<article class="soon"><h2>Cameras</h2><p class="small">Not built yet. Next up: a camera in over RTSP or NDI, shown here and under the overlays.</p></article>
-</section>
+<div class="columns wide-left">
+<article><h2>Cameras</h2>
+<p id="engineStatus" class="small">Starting the camera engine…</p>
+<div id="cameraList" class="tiles"></div>
+<p id="noCameras" class="small">No cameras yet. Add one on the right.</p></article>
+<article><h2>Add a camera</h2>
+<div class="field"><label for="camName">Name</label><input id="camName" placeholder="Pool, wide"></div>
+<div class="field"><label for="camUrl">Address</label><input id="camUrl" placeholder="rtsp://192.168.1.50/1" spellcheck="false"></div>
+<div class="actions"><button id="camAdd" class="primary">Add</button><span id="camAddStatus" class="small"></span></div>
+<p class="small">Most PTZ cameras serve their main stream at <code>rtsp://&lt;camera ip&gt;/1</code>; if the camera asks for a login, write it as <code>rtsp://user:password@ip/1</code>. Set the camera to H.264. An NDI camera's RTSP output works today; NDI itself comes later.</p></article>
+</div></section>
 
 <section id="theme" role="tabpanel" aria-labelledby="tab-theme" hidden>
 <article class="soon"><h2>Theme</h2><p class="small">Not built yet. The look of the overlays: colours, team logos, fonts, which graphics show and when.</p></article>

@@ -38,7 +38,7 @@ app.on('browser-window-created', (event, win) => {
         console.log(JSON.stringify(r, null, 1));
         check(r.shown === 'stream', 'the Stream tab is shown first: ' + r.shown);
         check(r.ready.stream && r.ready.timer && r.ready.events, 'Stream, Timer and Events dots are green');
-        check(!r.ready.cameras && !r.ready.theme, 'unbuilt tabs stay quiet');
+        check(!r.ready.theme, 'the unbuilt Theme tab stays quiet');
         check(r.timer === 'Connected · receiving', 'timer port reads the simulated console');
         check(/^\d:\d\d\.\d$/.test(r.clock), 'clock shows a time: ' + r.clock);
         check(r.event === '1 / 1', 'event and heat decoded: ' + r.event);
@@ -51,9 +51,19 @@ app.on('browser-window-created', (event, win) => {
         check(received.length >= 5 && received.at(-1).type === 'scoreboard' && received.at(-1).event === 1, `overlay received ${received.length} packets`);
         check(received.some(p => p.lanes.some(l => l.name)), 'packets carry names from the start lists');
         check(!r.error, 'no error shown: ' + r.error);
+        // Cameras: the engine must run; with ffmpeg about, the simulated test pattern must play.
+        const engine = await win.webContents.executeJavaScript(text('engineStatus'));
+        check(/^Camera engine running/.test(engine), 'camera engine running: ' + engine);
+        if (/ffmpeg not found/.test(engine)) console.log('SKIP camera picture: no ffmpeg on this machine');
+        else {
+            await wait(6000);
+            const cams = await win.webContents.executeJavaScript(`({ tiles: document.querySelectorAll('.tile').length, status: [...document.querySelectorAll('.tile .small')].map(s => s.textContent), ready: ${dots} })`);
+            check(cams.tiles === 1 && /^Live · \d+×\d+/.test(cams.status[0]), 'test pattern camera is live: ' + cams.status.join(' / '));
+            check(cams.ready.cameras, 'Cameras dot is green');
+        }
         if (shot) {
             // One screenshot per tab: shot.png, shot-timer.png, shot-events.png …
-            for (const t of ['stream', 'timer', 'events']) {
+            for (const t of ['stream', 'timer', 'events', 'cameras']) {
                 await win.webContents.executeJavaScript(`document.getElementById('tab-${t}').click()`); await wait(400);
                 const file = t === 'stream' ? shot : shot.replace(/\.png$/, `-${t}.png`);
                 fs.writeFileSync(file, (await win.webContents.capturePage()).toPNG()); console.log('screenshot ' + file);
@@ -66,6 +76,7 @@ app.on('browser-window-created', (event, win) => {
         check(after[0] === 'Not connected.' && after[1] === 'Not connected.', 'both ports disconnect: ' + after.slice(0, 2).join(' / '));
         check(!after[2].timer, 'the Timer dot goes quiet once disconnected');
         console.log(failed ? 'SMOKE FAILED' : 'SMOKE PASSED');
-        app.exit(failed ? 1 : 0);
+        process.exitCode = failed ? 1 : 0;
+        app.quit();                                   // through before-quit, so the ports, relay and go2rtc are closed as in real use
     });
 });
