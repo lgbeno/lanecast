@@ -33,8 +33,13 @@ p{color:var(--muted);margin:8px 0 16px}
 .panel-head{display:flex;align-items:center;margin:0 0 16px}.panel-head h2{margin:0}
 .stack{display:grid;gap:18px}
 /* Controls for a simulated part, in place of the real ones. */
-.sim-panel{margin-top:18px;padding:14px 16px 4px;border:1px solid #5a4a7a;border-radius:10px}
-.sim-panel .eyebrow{color:var(--sim);margin:0 0 6px}
+.sim-panel{margin:0;padding:0 16px 4px;border:1px solid #5a4a7a;border-radius:10px}
+.sim-panel summary{display:flex;align-items:center;gap:14px;padding:12px 0;list-style:none;cursor:pointer;color:var(--muted)}
+.sim-panel summary::-webkit-details-marker{display:none}
+.sim-panel summary::before{content:"▸";color:var(--sim);font-size:12px;transition:transform .15s}
+.sim-panel[open] summary::before{transform:rotate(90deg)}
+.sim-panel .eyebrow{color:var(--sim);margin:0}
+.sim-panel .actions:first-of-type{margin-top:0}
 .sim-panel .stepper input{width:56px;font-size:20px;padding:3px}
 .sim-panel .step{padding:7px 10px;font-size:14px}
 .sim-panel .latch{margin-left:0;padding:9px 14px}

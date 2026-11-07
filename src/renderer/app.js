@@ -333,13 +333,16 @@
         if (visible('timer')) $('lanes').replaceChildren(...latest.lanes.map(lane => row([lane.lane, lane.place || '—',
             lane.time ? { text: lane.time, className: 'time' } : lane.followsClock && latest.clock ? { text: latest.clock, className: 'faint' } : '—'])));
         $('timerHead').textContent = sim.timer ? 'Simulated timing console' : 'Timing console';
-        $('timerSim').hidden = !sim.timer;
+        // The simulated console's controls live on the Stream tab, where the picture is; folded away when not wanted.
+        $('simConsole').hidden = !sim.timer;
         if (sim.timer) {
             if (document.activeElement !== $('simEventNo')) $('simEventNo').value = sim.event ?? '';
             if (document.activeElement !== $('simHeatNo')) $('simHeatNo').value = sim.heat ?? '';
             $('simRun').setAttribute('aria-pressed', String(sim.running)); $('simRace').setAttribute('aria-pressed', String(sim.racing));
-            $('simNote').textContent = sim.running ? `Running the meet through ${rosters.events.size ? plural(rosters.events.size, 'loaded event') : 'the built-in meet'} · lineup, race, results, next heat`
-                : sim.racing ? `Racing event ${sim.event} heat ${sim.heat}` : `Lined up on event ${sim.event} heat ${sim.heat}` + (rosters.events.size ? '' : ' · no start lists loaded, so lanes are made up');
+            const doing = sim.running ? `Running the meet through ${rosters.events.size ? plural(rosters.events.size, 'loaded event') : 'the built-in meet'}`
+                : sim.racing ? `Racing event ${sim.event} heat ${sim.heat}` : `Lined up on event ${sim.event} heat ${sim.heat}`;
+            $('simSummary').textContent = doing;
+            $('simNote').textContent = sim.running ? 'Lineup, race, results, next heat, round and round.' : rosters.events.size ? 'Step through the events loaded; race this heat, or run the meet from here.' : 'No start lists loaded, so lanes are made up. Fetch or load some on the Events tab.';
         }
         // Events: how much is stored, what arrived last, and the selected start list.
         $('eventsLoaded').textContent = rosters.events.size;
@@ -466,6 +469,7 @@
     $('simEventNo').onchange = e => { const n = Math.floor(Number(e.target.value)); if (n >= 1) simCall(api.sim.control(n, 1)); else render(); };
     $('simHeatNo').onchange = e => { const n = Math.floor(Number(e.target.value)); if (n >= 1) simCall(api.sim.control(simEvent(), n)); else render(); };
     $('simRun').onclick = () => simCall(api.sim.run(!sim.running, simEvent(), simHeat()));
+    $('simConsole').addEventListener('toggle', () => api.store.set('simConsoleOpen', $('simConsole').open).catch(() => {}));
     $('simRace').onclick = () => simCall(api.sim.race(!sim.racing));
     $('fetchSim').onclick = fetchSimulatedEvents;
     $('chooseMedia').onclick = async () => { hideError(); try { await api.sim.chooseMedia(); } catch (e) { showError(e); } };
@@ -521,6 +525,7 @@
         document.title = `Lanecast ${info.version}`;
         remembered = (await api.store.get('ports')) || {};
         programCamera = (await api.store.get('programCamera')) || null;
+        $('simConsole').open = (await api.store.get('simConsoleOpen')) !== false;
         showTab((await api.store.get('tab')) || 'stream', false);
         relay = await api.relay.status();
         engine = await api.cameras.status();

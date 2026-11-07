@@ -33,13 +33,13 @@ app.on('browser-window-created', (event, win) => {
         socket.on('error', e => console.log('overlay socket error', e.message));
 
         // Everything simulated at start: the pretend console connects by itself, no port controls show.
-        const start = await js(`({ timer: ${text('timerStatus')}, timerControls: document.getElementById('timerPort').parentElement.hidden, simPanel: !document.getElementById('timerSim').hidden,
+        const start = await js(`({ timer: ${text('timerStatus')}, timerControls: document.getElementById('timerPort').parentElement.hidden, simPanel: !document.getElementById('simConsole').hidden && document.getElementById('timer').querySelector('.sim-panel') === null,
             meet: ${text('meetStatus')}, fetch: !document.getElementById('fetchSim').hidden && document.getElementById('loadFiles').hidden && document.getElementById('saveFiles').hidden, camSim: !document.getElementById('camSim').hidden, camAdd: document.getElementById('camAdd').hidden,
             badges: ${badges}, shown: document.querySelector('[role=tabpanel]:not([hidden])').id, error: document.getElementById('error').hidden ? '' : ${text('error')} })`);
         console.log(JSON.stringify(start, null, 1));
         check(start.shown === 'stream', 'the Stream tab is shown first: ' + start.shown);
         check(start.badges === 'timer,events,cameras', 'Sim badges on Timer, Events and Cameras, none on Stream: ' + start.badges);
-        check(/^Simulated · the pretend console is connected/.test(start.timer) && start.timerControls && start.simPanel, 'timer: pretend console connected, port controls gone, console controls shown');
+        check(/^Simulated · the pretend console is connected/.test(start.timer) && start.timerControls && start.simPanel, 'timer: pretend console connected, port controls gone, console controls on the Stream tab');
         check(/^Simulated/.test(start.meet) && start.fetch, 'events: no port, Fetch simulated events in place of Load and Save');
         check(start.camSim && start.camAdd, 'cameras: the simulated camera card replaces Add a camera');
         check(!start.error, 'no error shown: ' + start.error);
@@ -55,8 +55,8 @@ app.on('browser-window-created', (event, win) => {
         const raced = await js(`({ event: ${text('event')}, state: ${text('raceState')}, clock: ${text('clock')}, note: ${text('simNote')}, racing: document.getElementById('simRace').getAttribute('aria-pressed') })`);
         check(raced.event === '2 / 1' && raced.state === 'RUNNING' && raced.racing === 'true', `raced event 2 heat 1 by hand: ${raced.event} ${raced.state} ${raced.clock}`);
         await click('simRun', 1500);
-        const running = await js(`({ running: document.getElementById('simRun').getAttribute('aria-pressed'), racing: document.getElementById('simRace').getAttribute('aria-pressed'), note: ${text('simNote')}, clock: ${text('clock')} })`);
-        check(running.running === 'true' && running.racing === 'false' && /^Running the meet through 12 loaded events/.test(running.note), `running the meet: ${running.note}`);
+        const running = await js(`({ running: document.getElementById('simRun').getAttribute('aria-pressed'), racing: document.getElementById('simRace').getAttribute('aria-pressed'), summary: ${text('simSummary')}, clock: ${text('clock')} })`);
+        check(running.running === 'true' && running.racing === 'false' && /^Running the meet through 12 loaded events/.test(running.summary), `running the meet: ${running.note}`);
         await wait(4000);
         const r = await js(`({ timer: ${text('timerStatus')}, clock: ${text('clock')}, event: ${text('event')}, relay: ${text('relayStatus')}, clients: ${text('clients')}, packets: ${text('packets')}, ready: ${dots} })`);
         check(/^\d:\d\d\.\d$/.test(r.clock) && r.ready.timer, 'clock shows a time and the Timer dot is green: ' + r.clock);
@@ -81,7 +81,7 @@ app.on('browser-window-created', (event, win) => {
 
         // Simulation is per part: the timer alone goes back to real ports; Events and Cameras stay simulated.
         await js(`document.querySelector('#timer .simToggle').click()`); await wait(1500);
-        const timerOff = await js(`({ timer: ${text('timerStatus')}, controls: !document.getElementById('timerPort').parentElement.hidden, panel: document.getElementById('timerSim').hidden, badges: ${badges}, dot: ${dots} })`);
+        const timerOff = await js(`({ timer: ${text('timerStatus')}, controls: !document.getElementById('timerPort').parentElement.hidden, panel: document.getElementById('simConsole').hidden, badges: ${badges}, dot: ${dots} })`);
         check(timerOff.timer === 'Not connected.' && timerOff.controls && timerOff.panel && timerOff.badges === 'events,cameras' && !timerOff.dot.timer, `timer back to real: ${JSON.stringify(timerOff)}`);
         await js(`document.querySelector('#cameras .simToggle').click()`); await wait(1000);
         const camOff = await js(`({ tiles: document.querySelectorAll('.tile').length, camAdd: !document.getElementById('camAdd').hidden, badges: ${badges} })`);
