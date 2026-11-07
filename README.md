@@ -47,13 +47,7 @@ npm install
 npm start
 ```
 
-Without hardware, flip the **Simulate** switch on each tab you are missing, or start with everything simulated:
-
-```bash
-npm run simulate
-```
-
-Everything shown then comes from the simulator, nothing from a real console.
+Without hardware, flip the **Simulate** switch on each tab you are missing. Nothing is simulated the first time; after that the app starts the way it was left, switches, chosen photo and all (settings live in a `lanecast.json` in the app's data folder).
 
 To work on the look of the window without launching Electron, serve the folder and open the page in a browser; `mock.js` stands in for the app's bridge with the same simulated meet and a drawn camera:
 

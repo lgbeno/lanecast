@@ -24,6 +24,7 @@ contextBridge.exposeInMainWorld('lanecast', {
         schedule: meet => invoke('sim:schedule', meet),
         chooseMedia: () => invoke('sim:chooseMedia'),
         clearMedia: () => invoke('sim:clearMedia'),
+        mediaBytes: () => invoke('sim:mediaBytes'),
         onChange: callback => on('sim:changed', callback)
     },
     relay: {

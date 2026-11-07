@@ -10,8 +10,11 @@ const os = require('node:os');
 const path = require('node:path');
 const WebSocket = require('ws');
 
-process.env.LANECAST_SIMULATE = '1';
-app.setPath('userData', fs.mkdtempSync(path.join(os.tmpdir(), 'lanecast-smoke-')));
+// A settings file as a previous session would have left it: everything simulated, a photo as the camera.
+// Nothing is simulated by default; this is how the choice persists from session to session.
+const userData = fs.mkdtempSync(path.join(os.tmpdir(), 'lanecast-smoke-'));
+app.setPath('userData', userData);
+fs.writeFileSync(path.join(userData, 'lanecast.json'), JSON.stringify({ simulate: { timer: true, events: true, cameras: true }, simMedia: { path: path.join(__dirname, '..', 'build', 'icon.png') }, relayPort: 18080 }));
 require('../src/main/main');
 const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
 const shot = process.argv.find(a => a.endsWith('.png'));
@@ -28,7 +31,7 @@ app.on('browser-window-created', (event, win) => {
         const click = async (id, ms = 300) => { await js(`document.getElementById(${JSON.stringify(id)}).click()`); await wait(ms); };
         await wait(2500);
         const received = [];
-        const socket = new WebSocket('ws://127.0.0.1:8080/');
+        const socket = new WebSocket('ws://127.0.0.1:18080/');       // the port from the settings file, clear of a Lanecast that may be running
         socket.on('message', data => received.push(JSON.parse(String(data))));
         socket.on('error', e => console.log('overlay socket error', e.message));
 
@@ -38,7 +41,7 @@ app.on('browser-window-created', (event, win) => {
             badges: ${badges}, shown: document.querySelector('[role=tabpanel]:not([hidden])').id, error: document.getElementById('error').hidden ? '' : ${text('error')} })`);
         console.log(JSON.stringify(start, null, 1));
         check(start.shown === 'stream', 'the Stream tab is shown first: ' + start.shown);
-        check(start.badges === 'timer,events,cameras', 'Sim badges on Timer, Events and Cameras, none on Stream: ' + start.badges);
+        check(start.badges === 'timer,events,cameras', 'the settings file is honoured: Sim badges on Timer, Events and Cameras, none on Stream: ' + start.badges);
         check(/^Simulated · the pretend console is connected/.test(start.timer) && start.timerControls && start.simPanel, 'timer: pretend console connected, port controls gone, console controls on the Stream tab');
         check(/^Simulated/.test(start.meet) && start.fetch, 'events: no port, Fetch simulated events in place of Load and Save');
         check(start.camSim && start.camAdd, 'cameras: the simulated camera card replaces Add a camera');
@@ -63,10 +66,15 @@ app.on('browser-window-created', (event, win) => {
         check(Number(r.packets) >= 5 && received.length >= 5 && received.at(-1).type === 'scoreboard', `packets published and received: ${r.packets} / ${received.length}`);
         check(received.some(p => p.lanes.some(l => l.name)), 'packets carry names from the start lists');
 
-        // Cameras: the simulated camera (the drawn pool) is live without ffmpeg; the program shows it.
+        // Cameras: the simulated camera shows the photo from the settings file, live, without ffmpeg; the program shows it.
         const cams = await js(`({ tiles: document.querySelectorAll('.tile').length, status: [...document.querySelectorAll('.tile .small')].map(s => s.textContent), media: ${text('mediaName')}, engine: ${text('engineStatus')}, ready: ${dots},
             program: document.getElementById('programVideo').videoWidth, note: document.getElementById('stageNote').hidden, bug: !document.getElementById('bug').hidden, pstatus: ${text('programStatus')} })`);
-        check(cams.tiles === 1 && /^Live · 1280×720/.test(cams.status[0]) && /drawn pool/.test(cams.media), `the simulated camera is live: ${cams.status.join(' / ')} · ${cams.media}`);
+        check(cams.tiles === 1 && /^Live · 1280×720/.test(cams.status[0]) && cams.media === 'Photo: icon.png', `the simulated camera shows the remembered photo, live: ${cams.status.join(' / ')} · ${cams.media}`);
+        const pixel = await js(`(() => { const v = document.getElementById('programVideo'), c = document.createElement('canvas'); c.width = 64; c.height = 36; const x = c.getContext('2d'); x.drawImage(v, 0, 0, 64, 36); const d = x.getImageData(0, 0, 64, 36).data; let lit = 0; for (let i = 0; i < d.length; i += 4) if (d[i] + d[i + 1] + d[i + 2] > 120) lit++; return lit; })()`);
+        check(pixel > 200, `the photo is actually drawn (lit pixels in the program: ${pixel})`);
+        await click('clearMedia', 1500);
+        const pool = await js(`({ media: ${text('mediaName')}, status: document.querySelector('.tile .small').textContent })`);
+        check(/drawn pool/.test(pool.media) && /^Live/.test(pool.status), `back to the drawn pool: ${pool.media} · ${pool.status}`);
         check(/^Camera engine running/.test(cams.engine), 'camera engine running: ' + cams.engine);
         check(cams.ready.cameras && cams.ready.stream && cams.program > 0 && cams.note && cams.bug && /^Idle · program ready/.test(cams.pstatus), `program shows the camera under the lower third: ${cams.program}px, ${cams.pstatus}`);
 
