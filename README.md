@@ -1,16 +1,26 @@
+<img src="assets/logo.svg" alt="" width="72" align="left">
+
 # Lanecast
 
-[lanecast.live](https://lanecast.live) · Stream swim meets to YouTube from one app. Lanecast reads the timing console and HY-TEK Meet Manager over serial, will take the camera over the network, composites the overlays and sends the program out — on Linux, Windows and macOS, from a single install.
+[lanecast.live](https://lanecast.live) · Stream swim meets to YouTube from one app.
+
+<br clear="left">
+
+ Lanecast reads the timing console and HY-TEK Meet Manager over serial, will take the camera over the network, composites the overlays and sends the program out — on Linux, Windows and macOS, from a single install.
 
 **Status: early.** The data side works: timer in, Meet Manager in, overlay feed out, with a simulated meet for trying it without hardware. Camera, compositing and the YouTube encoder are next; see [docs/architecture.md](docs/architecture.md) for the plan.
 
 ## What it does today
 
-| Panel | What it does |
-| --- | --- |
-| **Timer** | Pick the serial port the console's scoreboard output is on and press Connect. Shows the running clock, event/heat and race state; View data shows every lane. |
-| **Meet data** | Pick the port on Meet Manager's scoreboard link and press Connect. Start lists accumulate as Meet Manager sends them and are kept between runs. Load reads Meet Manager's `.scb` export files; Save writes them back out; View data steps through events and heats. |
-| **Overlay feed** | A WebSocket server on port 8080 inside the app. Every scoreboard change goes to every overlay connected, on this machine or another. View data shows the current packet. |
+Five tabs across the top. Each tab's dot turns green when that part is ready to go, and stays quiet otherwise.
+
+| Tab | What it does | Green when |
+| --- | --- | --- |
+| **Stream** | The overlay feed: a WebSocket server on port 8080 inside the app. Every scoreboard change goes to every overlay connected, on this machine or another. The current packet is shown. YouTube output will live here. | an overlay is connected |
+| **Timer** | Pick the serial port the console's scoreboard output is on and press Connect. Shows the running clock, event/heat, race state and every lane. | the console's clock is arriving |
+| **Events** | Pick the port on Meet Manager's scoreboard link and press Connect. Start lists accumulate as Meet Manager sends them and are kept between runs. Load reads Meet Manager's `.scb` export files, Save writes them back out, and the browser steps through events and heats. | start lists are in hand |
+| **Cameras** | Not built yet. | — |
+| **Theme** | Not built yet. | — |
 
 No baud rates or parity to set: each link has one correct setting and the app uses it. A port that was connected when the app closed is reconnected at launch; a port that drops out is reopened when it comes back.
 
