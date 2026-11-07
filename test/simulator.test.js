@@ -37,14 +37,14 @@ test('the console can be driven by hand: pick a heat, start the race, stop it', 
     s = run(3025, 8000);
     assert.equal(s.state, 'running'); assert.equal(s.clock, '0:04.9');     // five seconds in; the newest block commits with the next control byte
     assert(s.lanes.some(l => l.followsClock), 'lanes follow the clock during the race');
-    s = run(8025, 60000);                                                  // a made-up event: ~30 s swims, then the clock holds
+    s = run(8025, 40000);                                                  // a made-up event: ~15 s swims, then the clock holds
     assert(s.lanes.filter(l => l.time && l.place).length >= 6, 'six made-up swimmers finish with places');
     assert.equal(s.state, 'unknown', 'the clock has stopped');
     source.race(false);
-    s = run(60025, 62000);
+    s = run(40025, 42000);
     assert.equal(s.clock, '0:00.0'); assert.equal(s.event, 12); assert(s.lanes.every(l => !l.time), 'stopping lines the heat up again');
-    source.control(1, 2); s = run(62025, 63000); assert.equal(s.heat, 2);
-    source.automatic(); s = run(63025, 64000); assert.equal(s.event, 1);  // back to the scripted meet, wherever it is
+    source.control(1, 2); s = run(42025, 43000); assert.equal(s.heat, 2);
+    source.automatic(); s = run(43025, 44000); assert.equal(s.event, 1);  // back to the scripted meet, wherever it is
 });
 test('a made-up meet leans short, has names in its lanes, and times itself by the title', () => {
     const meet = Sim.generateMeet({ events: 60, seed: 7 });
@@ -59,8 +59,10 @@ test('a made-up meet leans short, has names in its lanes, and times itself by th
         assert(swimmers.length >= 5 && swimmers.length <= 8);
         for (const [name, team] of swimmers) { assert(/\S/.test(name)); assert(Sim.TEAMS ? true : /^[A-Z]{4}$/.test(team)); }
     }
-    assert.equal(Sim.secondsFor('Girls 9-10 50 Free'), 31); assert.equal(Sim.secondsFor('Boys 13-14 100 Breast'), 81);
-    assert.equal(Sim.secondsFor('Mixed 11-12 200 Free Relay'), 124); assert.equal(Sim.secondsFor(''), 31);
+    // Simulated races are short: 15 s for a 25 or 50, 20 s for a 100, 30 s from a 200 up; the age range never reads as a distance.
+    assert.equal(Sim.secondsFor('Girls 9-10 50 Free'), 15); assert.equal(Sim.secondsFor('Boys 13-14 100 Breast'), 20);
+    assert.equal(Sim.secondsFor('Mixed 11-12 200 Free Relay'), 30); assert.equal(Sim.secondsFor('Girls 8 & Under 25 Fly'), 15);
+    assert.equal(Sim.secondsFor('Boys 15 & Over 500 Free'), 30); assert.equal(Sim.secondsFor(''), 15);
     assert.deepEqual(Sim.generateMeet({ events: 3, seed: 1 }), Sim.generateMeet({ events: 3, seed: 1 }), 'the same seed gives the same meet');
 });
 test('the console runs whatever meet it is given, from the heat asked for, round and round', () => {
