@@ -26,7 +26,7 @@ Lanecast reads the timing console and HY-TEK Meet Manager over serial, will take
 
 ## What it does today
 
-Five tabs across the top. Each tab's dot turns green when that part is ready to go, and stays quiet otherwise. Every tab has a **Simulation** switch: on, the app runs a made-up meet on pretend ports (and a test-pattern camera when ffmpeg is on the PATH) and the tabs wear a *Sim* badge, so you can learn the app on the kitchen table.
+Five tabs across the top. Each tab's dot turns green when that part is ready to go, and stays quiet otherwise. The Timer, Events and Cameras tabs each have their own **Simulate** switch, so you can run a real timer against a made-up Meet Manager, or a real camera against a made-up race; whatever is simulated wears a *Sim* badge on its tab (and on Stream, which shows the lot). The Stream tab's switch simulates everything at once, for learning the app on the kitchen table.
 
 | Tab | What it does | Green when |
 | --- | --- | --- |
@@ -47,7 +47,7 @@ npm install
 npm start
 ```
 
-Without hardware, flip the **Simulation** switch in any tab, or start with it on:
+Without hardware, flip the **Simulate all** switch on the Stream tab (or the part you are missing on its own tab), or start with everything simulated:
 
 ```bash
 npm run simulate

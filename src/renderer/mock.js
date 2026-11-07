@@ -12,7 +12,8 @@
     const on = (name, callback) => { (listeners[name] ||= []).push(callback); return () => { listeners[name] = listeners[name].filter(f => f !== callback); }; };
     const emit = (name, ...args) => { for (const f of listeners[name] || []) f(...args); };
     const SIM_PORTS = [{ path: 'sim:timer', label: 'Simulated timing console' }, { path: 'sim:meet', label: 'Simulated Meet Manager' }];
-    let simOn = localStorage.getItem('lanecast-mock:simulate') !== 'off';
+    const PARTS = ['timer', 'events', 'cameras'];
+    const sim = JSON.parse(localStorage.getItem('lanecast-mock:simulate') || '{"timer":true,"events":true,"cameras":true}');
     const epoch = performance.now(), console_ = new Sim.TimerSource();
     const ports = { timer: { state: 'closed', message: '', path: null, stop: null }, meet: { state: 'closed', message: '', path: null, stop: null } };
     const state = role => ({ state: ports[role].state, message: ports[role].message, path: ports[role].path });
@@ -27,7 +28,7 @@
         const id = setInterval(() => { const r = mm.walkNext(); if (r) emit('serial:data', role, r); }, 670);
         return () => clearInterval(id);
     };
-    const simState = () => { const m = console_.manual; return { on: simOn, ffmpeg: true, event: m?.event ?? null, heat: m?.heat ?? null, racing: !!m?.racing }; };
+    const simState = () => { const m = console_.manual; return { ...sim, ffmpeg: true, event: m?.event ?? null, heat: m?.heat ?? null, racing: !!m?.racing }; };
 
     // A camera that is drawn, not received: colour bars and a moving clock on a canvas.
     let pattern = null;
@@ -50,9 +51,9 @@
     const saveCameras = () => localStorage.setItem('lanecast-mock:cameras', JSON.stringify(cameras));
 
     window.lanecast = {
-        info: async () => ({ version: 'design mode', simulated: simOn, platform: 'browser' }),
+        info: async () => ({ version: 'design mode', platform: 'browser' }),
         serial: {
-            list: async () => simOn ? SIM_PORTS : [],
+            list: async role => (role === 'meet' ? sim.events : sim.timer) ? [SIM_PORTS[role === 'meet' ? 1 : 0]] : [],
             open: async (role, path) => {
                 if (!SIM_PORTS.some(p => p.path === path)) throw new Error('Choose a port first');
                 if (ports[role].stop) ports[role].stop();
@@ -66,7 +67,14 @@
         },
         sim: {
             state: async () => simState(),
-            set: async onNow => { simOn = !!onNow; localStorage.setItem('lanecast-mock:simulate', simOn ? 'on' : 'off'); for (const role of ['timer', 'meet']) if (ports[role].stop) await window.lanecast.serial.close(role); emit('sim:changed', simState()); },
+            set: async (part, onNow) => {
+                for (const p of part === 'all' ? PARTS : [part]) {
+                    sim[p] = !!onNow;
+                    const role = p === 'timer' ? 'timer' : p === 'events' ? 'meet' : null;
+                    if (role && ports[role].stop) await window.lanecast.serial.close(role);
+                }
+                localStorage.setItem('lanecast-mock:simulate', JSON.stringify(sim)); emit('sim:changed', simState());
+            },
             control: async (event, heat) => { console_.control(event, heat); return simState(); },
             race: async onNow => { console_.race(onNow); return simState(); },
             onChange: cb => on('sim:changed', cb)
@@ -74,7 +82,7 @@
         relay: { sent: 0, status: async () => ({ port: 8080, listening: true, clients: 1, sent: window.lanecast.relay.sent, error: '', hosts: ['192.168.1.20'] }), send: () => { window.lanecast.relay.sent++; }, onStatus: cb => on('relay:status', cb) },
         cameras: {
             status: async () => ({ running: true, error: '', api: '', version: 'design mode', installed: true, ffmpeg: true, log: [] }),
-            list: async () => (simOn ? [{ id: 'cam-pattern', name: 'Test pattern', url: 'pattern' }] : []).concat(cameras).map(c => ({ ...c, producers: 1, consumers: 1 })),
+            list: async () => (sim.cameras ? [{ id: 'cam-pattern', name: 'Test pattern', url: 'pattern' }] : []).concat(cameras).map(c => ({ ...c, producers: 1, consumers: 1 })),
             add: async ({ name, url }) => { if (!url) throw new Error('Enter the camera’s address'); const camera = { id: 'cam-' + Date.now().toString(36), name: name || `Camera ${cameras.length + 1}`, url }; cameras.push(camera); saveCameras(); return camera; },
             remove: async id => { const i = cameras.findIndex(c => c.id === id); if (i >= 0) { cameras.splice(i, 1); saveCameras(); } },
             onStatus: cb => on('cameras:status', cb),

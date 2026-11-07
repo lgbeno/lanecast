@@ -20,12 +20,15 @@
     let following = true;                        // the selection moves to each start list as it arrives, until the user steps away
     let lastSent = '', lastSendAt = 0, packets = 0, lastPacketAt = null;
     let relay = { port: 0, listening: false, clients: 0, sent: 0, error: '', hosts: [] };
-    let sim = { on: false, ffmpeg: false, event: null, heat: null, racing: false };
-    let ports = [], remembered = {};
+    // Simulation, part by part: the timer, the meet data, the cameras.
+    let sim = { timer: false, events: false, cameras: false, ffmpeg: false, event: null, heat: null, racing: false };
+    const PART_OF = { timer: 'timer', meet: 'events' };            // which part each port role belongs to
+    const anySim = () => sim.timer || sim.events || sim.cameras;
+    let ports = { timer: [], meet: [] }, remembered = {};
     const links = { timer: { state: 'closed', message: '', path: null }, meet: { state: 'closed', message: '', path: null } };
     const connected = role => links[role].state === 'open';
     const busy = role => links[role].state === 'connecting';
-    const rosterKey = () => sim.on ? 'rosters-sim' : 'rosters';     // made-up names are kept apart from a real meet's
+    const rosterKey = () => sim.events ? 'rosters-sim' : 'rosters';     // made-up names are kept apart from a real meet's
 
     const showError = e => { $('error').hidden = false; $('error').textContent = (e.message || String(e)).replace(/^Error invoking remote method '[^']+': (Error: )?/, ''); };
     const hideError = () => { $('error').hidden = true; };
@@ -217,8 +220,8 @@
         $('goLive').disabled = true; $('goLive').title = 'Streaming out is not built yet';
         $('programStatus').textContent = picture ? 'Program ready · not streaming' : 'Not streaming';
         // Simulation controls: the made-up console by hand.
-        $('simControls').hidden = !sim.on;
-        if (sim.on) {
+        $('simControls').hidden = !sim.timer;
+        if (sim.timer) {
             if (document.activeElement !== $('simEventNo')) $('simEventNo').value = sim.event ?? latest.event ?? '';
             if (document.activeElement !== $('simHeatNo')) $('simHeatNo').value = sim.heat ?? latest.heat ?? '';
             $('simRace').setAttribute('aria-pressed', String(sim.racing));
@@ -242,12 +245,17 @@
             cameras: camerasLive,                                               // a camera's picture is arriving
             theme: false                                                        // not built yet
         };
+        const simulatedTab = { stream: anySim(), timer: sim.timer, events: sim.events, cameras: sim.cameras, theme: false };
         for (const name of TABS) {
             const button = $('tab-' + name);
             button.firstElementChild.dataset.ready = String(ready[name]);
-            const badge = button.querySelector('.sim-badge'); if (badge) badge.hidden = !(sim.on && SIM_TABS.includes(name));
+            const badge = button.querySelector('.sim-badge'); if (badge) badge.hidden = !(simulatedTab[name] && SIM_TABS.includes(name));
         }
-        for (const toggle of document.querySelectorAll('.simToggle')) toggle.checked = sim.on;
+        for (const toggle of document.querySelectorAll('.simToggle')) {
+            const part = toggle.dataset.part;
+            if (part === 'all') { toggle.checked = sim.timer && sim.events && sim.cameras; toggle.indeterminate = !toggle.checked && anySim(); }
+            else toggle.checked = !!sim[part];
+        }
         // Timer: only what the console sends.
         $('event').textContent = `${latest.event ?? '—'} / ${latest.heat ?? '—'}`;
         $('clock').textContent = latest.clock || '—:—.—';
@@ -283,7 +291,7 @@
         // Ports.
         for (const role of ROLES) {
             const link = links[role];
-            $(role + 'Connect').disabled = !ports.length || connected(role) || busy(role);
+            $(role + 'Connect').disabled = !ports[role].length || connected(role) || busy(role);
             $(role + 'Disconnect').disabled = link.state === 'closed';
             $(role + 'Port').disabled = link.state !== 'closed';
         }
@@ -301,12 +309,12 @@
 
     // ---- ports ---------------------------------------------------------------------------
     async function refreshPorts() {
-        try { ports = await api.serial.list(); } catch (e) { ports = []; }
         for (const role of ROLES) {
+            try { ports[role] = await api.serial.list(role); } catch (e) { ports[role] = []; }
             const select = $(role + 'Port'), current = links[role].path || select.value || remembered[role] || '';
-            select.replaceChildren(...ports.map(p => new Option(p.label, p.path)));
-            if (!ports.length) select.append(new Option(sim.on ? 'No simulated ports' : 'No serial ports found', ''));
-            if (ports.some(p => p.path === current)) select.value = current;
+            select.replaceChildren(...ports[role].map(p => new Option(p.label, p.path)));
+            if (!ports[role].length) select.append(new Option('No serial ports found', ''));
+            if (ports[role].some(p => p.path === current)) select.value = current;
         }
         render();
     }
@@ -319,7 +327,7 @@
         render();
     }
     async function disconnect(role) {
-        if (!sim.on) { remembered[role] = null; api.store.set('ports', remembered); }
+        if (!sim[PART_OF[role]]) { remembered[role] = null; api.store.set('ports', remembered); }
         try { await api.serial.close(role); } catch (e) { showError(e); }
         render();
     }
@@ -336,24 +344,28 @@
     api.relay.onStatus(status => { relay = status; render(); });
 
     // ---- simulation ----------------------------------------------------------------------
-    /** Simulation on: the made-up ports, both connected; off: the real ports, as remembered. */
+    /** A part switched to simulation gets its pretend port connected; switched back, its remembered real port. */
     async function applySim(state, first = false) {
-        const was = sim.on; sim = state;
-        if (first || was !== sim.on) {
-            await loadRosters();
-            await refreshPorts();
-            if (sim.on) { await connect('timer', 'sim:timer'); await connect('meet', 'sim:meet'); }
-            else if (!first) for (const role of ROLES) if (remembered[role] && ports.some(p => p.path === remembered[role])) connect(role, remembered[role]);
+        const was = sim; sim = state;
+        const changed = part => first || was[part] !== sim[part];
+        if (changed('events')) await loadRosters();
+        if (changed('timer') || changed('events')) await refreshPorts();
+        for (const role of ROLES) {
+            const part = PART_OF[role];
+            if (!changed(part)) continue;
+            if (sim[part]) await connect(role, role === 'timer' ? 'sim:timer' : 'sim:meet');
+            else if (!first && remembered[role] && ports[role].some(p => p.path === remembered[role])) connect(role, remembered[role]);
         }
-        $('banner').hidden = !sim.on;
-        $('banner').textContent = api.designMode ? 'Design mode in a browser: a made-up meet and a drawn camera, nothing real.'
-            : 'Simulation: a made-up meet on pretend ports' + (sim.ffmpeg ? ' and a test-pattern camera' : '') + '. Nothing here comes from a timing console or Meet Manager.';
-        await refreshCameras();
+        const parts = [sim.timer && 'the timer', sim.events && 'Meet Manager', sim.cameras && (sim.ffmpeg || api.designMode ? 'a camera' : 'a camera (no ffmpeg, so no picture)')].filter(Boolean);
+        $('banner').hidden = !parts.length;
+        const list = parts.length > 1 ? parts.slice(0, -1).join(', ') + ' and ' + parts.at(-1) : parts[0] || '';
+        $('banner').textContent = (api.designMode ? 'Design mode in a browser, nothing real. ' : '') + 'Simulating ' + list + '. Nothing simulated comes from the pool.';
+        if (changed('cameras')) await refreshCameras();
         render();
     }
     for (const toggle of document.querySelectorAll('.simToggle')) toggle.addEventListener('change', async e => {
         hideError();
-        try { await api.sim.set(e.target.checked); } catch (err) { showError(err); render(); }
+        try { await api.sim.set(e.target.dataset.part, e.target.checked); } catch (err) { showError(err); render(); }
     });
     api.sim.onChange(state => applySim(state));
     const simSet = async (event, heat) => { try { sim = await api.sim.control(event, heat); } catch (e) { showError(e); } render(); };
@@ -425,7 +437,7 @@
         for (const role of ROLES) links[role] = await api.serial.state(role);
         await applySim(await api.sim.state(), true);
         // Real ports that were connected when the app last closed are connected again.
-        if (!sim.on) for (const role of ROLES) if (remembered[role] && ports.some(p => p.path === remembered[role]) && links[role].state === 'closed') connect(role, remembered[role]);
+        for (const role of ROLES) if (!sim[PART_OF[role]] && remembered[role] && ports[role].some(p => p.path === remembered[role]) && links[role].state === 'closed') connect(role, remembered[role]);
         setInterval(refreshPorts, 3000);
         setInterval(refreshCameras, 3000);
         setInterval(() => { if (connected('timer')) latest = decoder.snapshot(performance.now() - timerStart); publish(); render(); }, 100);
