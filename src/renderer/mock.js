@@ -92,7 +92,7 @@
                 };
             })()
         },
-        project: { info: async () => ({ path: null, name: 'Design mode' }), new: async () => ({ path: null, name: 'Design mode' }), open: async () => { throw new Error('Design mode cannot open files; run the app for that'); }, save: async () => { throw new Error('Design mode cannot save files; run the app for that'); }, saveAs: async () => { throw new Error('Design mode cannot save files; run the app for that'); }, onChange: cb => on('project:changed', cb) },
+        project: { info: async () => ({ path: null, name: localStorage.getItem('mock-project') || 'Design mode', named: true }), rename: async name => { localStorage.setItem('mock-project', name); return { path: null, name: name || 'Design mode', named: true }; }, new: async () => ({ path: null, name: 'Design mode', named: true }), open: async () => { throw new Error('Design mode cannot open files; run the app for that'); }, save: async () => { throw new Error('Design mode cannot save files; run the app for that'); }, saveAs: async () => { throw new Error('Design mode cannot save files; run the app for that'); }, onChange: cb => on('project:changed', cb) },
         themes: {
             list: async () => [
                 { id: 'classic', name: 'Classic', version: '1.0.0', author: 'Lanecast', description: 'A lower third: event and heat, the title, the clock, the lanes.', source: 'built-in', overlay: 'overlay.html', control: null, url: '../../themes/classic/' },

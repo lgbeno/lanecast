@@ -172,6 +172,11 @@ app.on('browser-window-created', (event, win) => {
         // Projects: save everything to a file, lose a camera, open the file: the camera is back and the project's own theme copy is in use.
         const zip = require('../src/main/zip');
         const projectFile = path.join(userData, 'Spring' + '.lanecast');
+        const untitled = win.getTitle();
+        await js(`document.getElementById('projectButton').click()`); await wait(200);
+        await js(`(() => { const i = document.getElementById('projectName'); i.focus(); i.value = 'Spring'; i.dispatchEvent(new Event('change')); })()`); await wait(600);
+        check(untitled === 'Lanecast' && win.getTitle() === 'Lanecast – Spring' && await js(`document.getElementById('projectDialog').open`), `the Project dialog names the project; the title bar reads "${win.getTitle()}" (was "${untitled}")`);
+        await js(`document.getElementById('projectDialog').close()`);
         const savedProject = await js(`window.lanecast.project.saveTo(${JSON.stringify(projectFile)})`);
         const inside = zip.read(fs.readFileSync(projectFile)).map(e => e.name);
         check(savedProject.name === 'Spring' && inside.includes('project.json') && inside.includes('theme/overlay.html') && inside.includes('theme/theme.json'), `project saved: ${inside.length} files, theme and media inside`);
@@ -182,8 +187,8 @@ app.on('browser-window-created', (event, win) => {
         const reloaded = new Promise(resolve => win.webContents.once('did-finish-load', resolve));
         await js(`window.lanecast.project.openPath(${JSON.stringify(projectFile)})`);
         await reloaded; await wait(5000);
-        const reopened = await js(`({ tiles: [...document.querySelectorAll('.tile .name')].map(n => n.textContent), status: document.querySelector('.tile .small')?.textContent, project: ${text('projectButton')}, theme: ${text('themeStatus')}, overlay: document.getElementById('overlayFrame').src, badges: ${badges}, events: ${text('eventsLoaded')} })`);
-        check(reopened.tiles.join(',') === 'Pool' && /^No stand-in yet/.test(reopened.status) && reopened.project === 'Spring', `project opened: the camera is back (its stand-in was removed earlier), project named in the bar`);
+        const reopened = await js(`({ tiles: [...document.querySelectorAll('.tile .name')].map(n => n.textContent), status: document.querySelector('.tile .small')?.textContent, project: document.getElementById('projectName').value, theme: ${text('themeStatus')}, overlay: document.getElementById('overlayFrame').src, badges: ${badges}, events: ${text('eventsLoaded')} })`);
+        check(reopened.tiles.join(',') === 'Pool' && /^No stand-in yet/.test(reopened.status) && reopened.project === 'Spring' && win.getTitle() === 'Lanecast – Spring', `project opened: the camera is back (its stand-in was removed earlier), project named in the dialog and the title bar`);
         check(/^Classic \(project\) · overlay ready/.test(reopened.theme) && reopened.overlay.startsWith('theme://p-project/overlay.html') && reopened.badges === 'timer,events,cameras' && reopened.events === '12', `the project's own copy of the theme is in use, switches and start lists restored: ${reopened.theme}`);
         socket.close();
         console.log(failed ? 'SMOKE FAILED' : 'SMOKE PASSED');

@@ -37,7 +37,10 @@ function createWindow() {
     win.on('page-title-updated', e => e.preventDefault());
     win.loadFile(path.join(__dirname, '..', 'renderer', 'index.html'));
     win.on('closed', () => { win = null; });
+    showProjectInTitle();
 }
+/** The title bar reads "Lanecast – <project>" once the project has a name. */
+function showProjectInTitle() { if (!win || !projects) return; const info = projects.info(); win.setTitle(info.named ? `Lanecast – ${info.name}` : 'Lanecast'); }
 
 /** Simulate one part: the made-up console on a pretend port, or start lists from Load or Fetch. */
 async function setSimulated(part, on) {
@@ -93,11 +96,13 @@ app.on('window-all-closed', () => app.quit());
 const filters = [{ name: 'Lanecast project', extensions: [PROJECT_EXT.slice(1)] }];
 async function projectSaveAs() {
     const current = projects.info();
-    const { canceled, filePath } = await dialog.showSaveDialog(win, { title: 'Save the project', defaultPath: current.path || path.join(app.getPath('documents'), 'Meet' + PROJECT_EXT), filters });
+    const suggested = (current.named ? current.name : 'Meet').replace(/[\\/:*?"<>|]+/g, ' ').trim() || 'Meet';
+    const { canceled, filePath } = await dialog.showSaveDialog(win, { title: 'Save the project', defaultPath: current.path || path.join(app.getPath('documents'), suggested + PROJECT_EXT), filters });
     if (canceled || !filePath) return current;
     return projectSaveTo(filePath);
 }
-async function projectSaveTo(file) { const info = await projects.save(file); send('project:changed', info); return info; }
+async function projectSaveTo(file) { const info = await projects.save(file); showProjectInTitle(); send('project:changed', info); return info; }
+async function projectRename(name) { const info = await projects.rename(name); showProjectInTitle(); send('project:changed', info); return info; }
 async function projectSave() { const current = projects.info(); return current.path ? projectSaveTo(current.path) : projectSaveAs(); }
 async function projectOpenDialog() {
     const { canceled, filePaths } = await dialog.showOpenDialog(win, { title: 'Open a project', properties: ['openFile'], filters });
@@ -108,6 +113,7 @@ async function projectOpenDialog() {
 async function projectOpenPath(file) {
     const info = await projects.open(file);
     for (const part of PARTS) await setSimulated(part, !!info.simulate[part]);
+    showProjectInTitle();
     if (win) win.webContents.reload();
     return info;
 }
@@ -118,6 +124,7 @@ async function projectNew() {
     }
     const info = await projects.fresh();
     for (const part of PARTS) await setSimulated(part, false);
+    showProjectInTitle();
     if (win) win.webContents.reload();
     return info;
 }
@@ -146,6 +153,7 @@ ipcMain.handle('project:openPath', (event, file) => projectOpenPath(String(file)
 ipcMain.handle('project:save', () => projectSave());
 ipcMain.handle('project:saveAs', () => projectSaveAs());
 ipcMain.handle('project:saveTo', (event, file) => projectSaveTo(String(file)));
+ipcMain.handle('project:rename', (event, name) => projectRename(String(name ?? '')));
 app.on('before-quit', () => { if (serial) serial.closeAll(); if (relay) relay.stop(); if (cameras) cameras.stop(); if (store) store.flush(); });
 // However the process ends, go2rtc must not outlive it.
 process.on('exit', () => { if (cameras) cameras.stop(); });

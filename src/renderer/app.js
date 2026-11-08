@@ -174,30 +174,57 @@
         }
         get hasPicture() { const el = this.element; return !!(el && (el.videoWidth || el.naturalWidth)); }
     }
-    /** One camera's picture: the stand-in while simulated; else a device on this computer, or the engine over WebRTC. Reconnects by itself. */
+    /** One camera's picture: the stand-in while simulated; else a device on this computer, or the engine over WebRTC.
+     *  A network camera reconnects by itself. A camera on this computer is opened once, and when it ends (the
+     *  iPhone's Disconnect, a cable pulled) it stays off until Reconnect is pressed: retrying on its own would
+     *  keep waking a phone someone has just put away. */
     class Player {
-        constructor(camera, video) { this.id = camera.id; this.camera = camera; this.video = video; this.pc = null; this.stream = null; this.standIn = null; this.timer = null; this.stopped = false; this.frames = 0; this.frameAt = 0; this.startedAt = performance.now(); this.start(); }
-        async start() {
+        constructor(camera, video) { this.id = camera.id; this.camera = camera; this.video = video; this.pc = null; this.stream = null; this.standIn = null; this.timer = null; this.stopped = false; this.frames = 0; this.frameAt = 0; this.startedAt = performance.now(); this.state = 'connecting'; this.error = ''; this.attempt = 0; this.start(); }
+        get isDevice() { return !this.camera.simulate && !!this.camera.url && this.camera.url.startsWith('device:'); }
+        /** The device this camera is, by its id or, when the id has changed (an iPhone gets a new one each time), by its name.
+         *  With `wait`, keeps looking for a few seconds: macOS offers a phone a moment after it is unlocked. Remembers a new id. */
+        async findDevice(wait) {
+            const deadline = performance.now() + (wait ? 6000 : 0), id = this.camera.url.slice(7), attempt = this.attempt;
+            for (;;) {
+                const known = (await navigator.mediaDevices.enumerateDevices()).filter(d => d.kind === 'videoinput');
+                const found = known.find(d => d.deviceId === id) || (this.camera.deviceLabel && known.find(d => d.label === this.camera.deviceLabel)) || null;
+                if (found) {
+                    if (found.deviceId !== id) { this.camera = { ...this.camera, url: 'device:' + found.deviceId }; api.cameras.update(this.id, { url: 'device:' + found.deviceId }).catch(() => {}); }
+                    return found.deviceId;
+                }
+                if (performance.now() >= deadline || this.attempt !== attempt || this.stopped) return null;
+                await new Promise(resolve => setTimeout(resolve, 500));
+            }
+        }
+        async start(wait = false) {
             if (this.stopped) return;
             if (this.camera.simulate) { this.standIn ||= new StandIn(); this.standIn.setMedia(this.camera); this.video.srcObject = this.standIn.stream; return; }
             if (!this.camera.url) return;
             if (this.camera.url.startsWith('device:')) {
                 // A camera on this computer: a webcam, a capture card, an iPhone. Opened by device id, 1080p if it can.
+                const attempt = ++this.attempt;
+                this.state = 'connecting'; this.error = ''; render();
                 try {
                     const access = api.cameras.access ? await api.cameras.access() : 'granted';     // macOS asks the person the first time
                     if (access !== 'granted') throw Object.assign(new Error('camera access was refused'), { name: 'NotAllowedError' });
-                    // An iPhone (and some adapters) comes back with a new device id each time: find it by name and remember the new id.
-                    let deviceId = this.camera.url.slice(7);
-                    const known = (await navigator.mediaDevices.enumerateDevices()).filter(d => d.kind === 'videoinput');
-                    if (!known.some(d => d.deviceId === deviceId) && this.camera.deviceLabel) {
-                        const again = known.find(d => d.label === this.camera.deviceLabel);
-                        if (again) { deviceId = again.deviceId; this.camera = { ...this.camera, url: 'device:' + deviceId }; api.cameras.update(this.id, { url: 'device:' + deviceId }).catch(() => {}); }
-                    }
-                    this.stream = await navigator.mediaDevices.getUserMedia({ video: { deviceId: { exact: deviceId }, width: { ideal: 1920 }, height: { ideal: 1080 }, frameRate: { ideal: 30 } }, audio: false });
-                    if (this.stopped || this.camera.simulate) { this.stream.getTracks().forEach(t => t.stop()); return; }
-                    this.video.srcObject = this.stream;
-                    this.stream.getVideoTracks()[0].onended = () => this.later();                // unplugged: try again until it is back
-                } catch (e) { this.error = e.name === 'NotAllowedError' ? 'camera access was refused · allow Lanecast in System Settings → Privacy → Camera' : e.name === 'NotFoundError' || e.name === 'OverconstrainedError' ? 'not plugged in' : e.message; this.later(); }
+                    const deviceId = await this.findDevice(wait);
+                    if (this.attempt !== attempt || this.stopped) return;
+                    if (!deviceId) throw Object.assign(new Error('not found'), { name: 'NotFoundError' });
+                    const stream = await navigator.mediaDevices.getUserMedia({ video: { deviceId: { exact: deviceId }, width: { ideal: 1920 }, height: { ideal: 1080 }, frameRate: { ideal: 30 } }, audio: false });
+                    if (this.attempt !== attempt || this.stopped || this.camera.simulate) { stream.getTracks().forEach(t => t.stop()); return; }
+                    this.stream = stream; this.video.srcObject = stream; this.state = 'open';
+                    stream.getVideoTracks()[0].onended = () => {                                // the phone's Disconnect, or a cable pulled: off until Reconnect
+                        if (this.stream !== stream) return;
+                        this.close(); this.video.srcObject = null; this.state = 'off'; this.error = 'the camera ended the picture'; render();
+                    };
+                } catch (e) {
+                    if (this.attempt !== attempt || this.stopped) return;
+                    this.state = 'off';
+                    this.error = e.name === 'NotAllowedError' ? 'camera access was refused · allow Lanecast in System Settings → Privacy → Camera'
+                        : e.name === 'NotFoundError' || e.name === 'OverconstrainedError' ? (this.camera.deviceLabel ? `${this.camera.deviceLabel} was not found · unlock it near this computer, or plug it in` : 'not found · is it plugged in?')
+                        : e.name === 'NotReadableError' ? 'another app has the camera' : e.message;
+                }
+                render();
                 return;
             }
             if (api.cameras.mockStream) { this.video.srcObject = api.cameras.mockStream(this.id); return; }     // design mode
@@ -220,8 +247,10 @@
             this.camera = camera;
             if (restart) { clearTimeout(this.timer); this.close(); this.frames = 0; this.frameAt = 0; this.startedAt = performance.now(); this.video.srcObject = null; this.start(); }
         }
+        /** Reconnect pressed: open the device again, looking for it by name for a few seconds if it is not there yet. */
+        reconnect() { clearTimeout(this.timer); this.close(); this.frames = 0; this.frameAt = 0; this.startedAt = performance.now(); this.video.srcObject = null; this.start(true); }
         later() { clearTimeout(this.timer); this.timer = setTimeout(() => this.start(), 2000); }
-        close() { if (this.pc) { this.pc.onconnectionstatechange = null; this.pc.close(); this.pc = null; } if (this.stream) { this.stream.getTracks().forEach(t => t.stop()); this.stream = null; } }
+        close() { if (this.pc) { this.pc.onconnectionstatechange = null; this.pc.close(); this.pc = null; } if (this.stream) { this.stream.getVideoTracks().forEach(t => { t.onended = null; }); this.stream.getTracks().forEach(t => t.stop()); this.stream = null; } }
         stop() { this.stopped = true; clearTimeout(this.timer); this.close(); this.video.srcObject = null; }
         /** Frames are still arriving, and for a simulated camera there is a stand-in to show. */
         get live() {
@@ -241,7 +270,9 @@
         box.onchange = async () => { try { await api.cameras.update(camera.id, { simulate: box.checked }); } catch (e) { showError(e); } await refreshCameras(); };
         const gear = document.createElement('button'); gear.type = 'button'; gear.className = 'gear'; gear.textContent = 'Settings'; gear.title = 'Name, address, simulation and stand-in';
         gear.onclick = () => openCameraDialog(camera.id);
-        caption.append(name, badge, status, sw, gear); figure.append(video, caption);
+        const again = document.createElement('button'); again.type = 'button'; again.className = 'reconnect'; again.textContent = 'Reconnect'; again.title = 'Open this camera again'; again.hidden = true;
+        again.onclick = () => { players.get(camera.id)?.reconnect(); render(); };
+        caption.append(name, badge, status, sw, again, gear); figure.append(video, caption);
         players.set(camera.id, new Player(camera, video));
         return figure;
     };
@@ -326,8 +357,8 @@
         else if (!$('deviceNote').textContent.startsWith('Camera access')) $('deviceNote').textContent = '';
     }
     $('findDevices').onclick = () => refreshDevices(true);
-    // A camera plugged back in (or an iPhone brought back) is tried again at once, not after the retry timer.
-    if (navigator.mediaDevices) navigator.mediaDevices.addEventListener('devicechange', () => { refreshDevices(false); for (const p of players.values()) if (p.camera.url.startsWith('device:') && !p.camera.simulate && !p.live) { clearTimeout(p.timer); p.timer = setTimeout(() => p.start(), 300); } });
+    // Cameras come and go: keep the list current. A camera that went away is not reopened on its own; its tile has Reconnect.
+    if (navigator.mediaDevices) navigator.mediaDevices.addEventListener('devicechange', () => refreshDevices(false));
     function renderCameras() {
         $('engineStatus').textContent = !engine.installed ? 'The camera engine (go2rtc) is not in this build.' : engine.error ? `Camera engine · ${engine.error}`
             : !engine.running ? 'Starting the camera engine…' : `Camera engine running${engine.version ? ' · go2rtc ' + engine.version : ''}${engine.ffmpeg ? '' : ' · ffmpeg not found, so network cameras must send H.264'}`;
@@ -339,13 +370,16 @@
             figure.querySelector('.name').textContent = c.name;
             figure.querySelector('.sim-badge').hidden = !c.simulate;
             const box = figure.querySelector('.camSim'); if (box.checked !== c.simulate) box.checked = c.simulate; box.disabled = !c.url;
+            const again = figure.querySelector('.reconnect');
+            again.hidden = !player.isDevice || player.live; again.disabled = player.state === 'connecting';
             if (player.live) { live++; status.textContent = `${c.simulate ? 'Stand-in' : 'Live'} · ${v.videoWidth}×${v.videoHeight}`; status.className = 'small live'; }
             else {
                 status.className = 'small';
                 status.textContent = c.simulate ? (c.media ? 'Loading the stand-in…' : 'No stand-in yet · Settings to choose a photo or video')
-                    : performance.now() - player.startedAt < 8000 ? 'Connecting…'
-                    : c.url.startsWith('device:') ? `No picture · ${player.error || 'is it plugged in and unlocked?'}` : 'No video yet · check the address, and that the camera sends H.264';
+                    : player.isDevice ? (player.state === 'off' ? `Disconnected · ${player.error}` : performance.now() - player.startedAt < 8000 ? 'Connecting…' : 'No picture · the camera is open but sends nothing · try Reconnect')
+                    : performance.now() - player.startedAt < 8000 ? 'Connecting…' : 'No video yet · check the address, and that the camera sends H.264';
             }
+            status.title = status.textContent;                       // the whole message, where the tile cuts it short
         }
         return live > 0;
     }
@@ -659,11 +693,15 @@
     });
 
     // ---- project -------------------------------------------------------------------------
-    let project = { path: null, name: 'Untitled project' };
+    let project = { path: null, name: 'Untitled project', named: false };
     function renderProject() {
-        $('projectButton').textContent = project.name; $('projectName').textContent = project.name;
+        $('projectButton').title = `Project: ${project.name}` + (project.path ? ` · ${project.path}` : ' · not saved yet');
+        if (document.activeElement !== $('projectName')) $('projectName').value = project.named ? project.name : '';
         $('projectPath').textContent = project.path || 'Not saved yet.';
     }
+    // The name is kept as soon as it is typed; the title bar follows. Enter keeps the dialog open.
+    $('projectName').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); e.target.blur(); } });
+    $('projectName').addEventListener('change', async () => { try { project = await api.project.rename($('projectName').value); renderProject(); } catch (e) { showError(e); } });
     const projectAction = (what, fn) => async () => {
         hideError(); $('projectNote').textContent = what + '…';
         try { project = await fn(); renderProject(); $('projectNote').textContent = project.path ? `${what}: ${project.path}` : ''; }

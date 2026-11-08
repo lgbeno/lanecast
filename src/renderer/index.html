@@ -15,7 +15,7 @@
 <button role="tab" id="tab-events" aria-controls="events" aria-selected="false"><i class="dot" data-ready="false"></i>Events<b class="sim-badge" hidden>Sim</b></button>
 <button role="tab" id="tab-cameras" aria-controls="cameras" aria-selected="false"><i class="dot" data-ready="false"></i><span id="camerasLabel">Camera</span><b class="sim-badge" hidden>Sim</b></button>
 <button role="tab" id="tab-theme" aria-controls="theme" aria-selected="false"><i class="dot" data-ready="false"></i>Theme</button>
-<button id="projectButton" class="project" type="button" title="The project: cameras, theme, settings and start lists in one file">Untitled project</button>
+<button id="projectButton" class="project" type="button" title="The project: its name, and saving or opening it as one file">Project</button>
 </nav>
 <main>
 <section id="stream" role="tabpanel" aria-labelledby="tab-stream" hidden>
@@ -126,7 +126,8 @@
 </div></section>
 
 <p id="error" role="alert" hidden></p>
-<dialog id="projectDialog"><form method="dialog"><h3 id="projectName">Untitled project</h3>
+<dialog id="projectDialog"><form method="dialog"><h3>Project</h3>
+<div class="field"><label for="projectName">Name</label><input id="projectName" placeholder="e.g. Spring Invitational" autocomplete="off"></div>
 <p id="projectPath" class="small">Not saved yet.</p>
 <p class="small">A project is one file holding the cameras and their stand-ins, a copy of the theme as it is now, the theme's settings, the start lists and the switches. Save it to carry a meet's setup to another computer, or to keep this season's look while the theme folder moves on.</p>
 <div class="actions"><button id="projectSave" type="button" class="primary">Save</button><button id="projectSaveAs" type="button">Save as…</button><button id="projectOpen" type="button">Open…</button><button id="projectNew" type="button" class="quiet">New project</button></div>

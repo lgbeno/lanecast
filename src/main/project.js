@@ -40,8 +40,14 @@ class Projects {
     constructor({ store, cameras, themes, workDir, version = '' }) {
         this.store = store; this.cameras = cameras; this.themes = themes; this.workDir = workDir; this.version = version;
     }
-    /** Where the open project lives, if any: { path, name }. */
-    info() { const file = this.store.get('projectPath', null); return { path: file, name: file ? path.basename(file, EXT) : 'Untitled project', ext: EXT }; }
+    /** The project's name and where it lives, if saved: { path, name, named }. A name given in the window wins; else the file's. */
+    info() {
+        const file = this.store.get('projectPath', null), given = String(this.store.get('projectName', '') || '').trim();
+        const name = given || (file ? path.basename(file, EXT) : '');
+        return { path: file, name: name || 'Untitled project', named: !!name, ext: EXT };
+    }
+    /** Name (or unname, with '') the project. Shows in the title bar and names the file on first save. */
+    async rename(name) { this.store.set('projectName', String(name || '').trim().slice(0, 80)); await this.store.flush(); return this.info(); }
     /** Everything that goes into the file, from the settings and the camera list. */
     manifest(name) {
         const themeId = this.store.get('theme', 'b-classic'), theme = this.themes.get(themeId) || this.themes.get('b-classic');
@@ -58,7 +64,8 @@ class Projects {
     /** Write the project to `file`. */
     async save(file) {
         if (!file.endsWith(EXT)) file += EXT;
-        const name = path.basename(file, EXT), manifest = this.manifest(name);
+        const name = String(this.store.get('projectName', '') || '').trim() || path.basename(file, EXT), manifest = this.manifest(name);
+        this.store.set('projectName', name);
         const entries = [{ name: 'project.json', data: JSON.stringify(manifest, null, 2) }];
         const theme = this.themes.get(manifest.theme?.id);
         if (theme) for (const [rel, abs] of await walk(theme.folder)) {
@@ -94,7 +101,7 @@ class Projects {
         const hasTheme = fs.existsSync(path.join(dir, 'theme', 'theme.json'));
         if (hasTheme) { this.themes.setProject(path.join(dir, 'theme')); this.store.set('theme', 'p-project'); this.store.set('theme-settings:p-project', m.themeSettings || {}); }
         else { this.themes.clearProject(); this.store.set('theme', m.theme?.id && this.themes.get(m.theme.id) ? m.theme.id : 'b-classic'); }
-        for (const [key, value] of [['simulate', m.simulate || {}], ['relayPort', m.relayPort || 8080], ['programCamera', m.programCamera || null], ['drawer', m.drawer || null], ['tab', m.tab || 'stream'], ['rosters', m.rosters || null], ['rosters-sim', m.rostersSim || null], ['projectPath', file]]) this.store.set(key, value);
+        for (const [key, value] of [['simulate', m.simulate || {}], ['relayPort', m.relayPort || 8080], ['programCamera', m.programCamera || null], ['drawer', m.drawer || null], ['tab', m.tab || 'stream'], ['rosters', m.rosters || null], ['rosters-sim', m.rostersSim || null], ['projectPath', file], ['projectName', String(m.name || path.basename(file, EXT)).slice(0, 80)]]) this.store.set(key, value);
         await this.store.flush();
         return { ...this.info(), simulate: m.simulate || {} };
     }
@@ -102,7 +109,7 @@ class Projects {
     async fresh() {
         await this.cameras.replaceAll([]);
         this.themes.clearProject();
-        for (const [key, value] of [['theme', 'b-classic'], ['theme-settings:p-project', null], ['simulate', {}], ['programCamera', null], ['rosters', null], ['rosters-sim', null], ['projectPath', null]]) this.store.set(key, value);
+        for (const [key, value] of [['theme', 'b-classic'], ['theme-settings:p-project', null], ['simulate', {}], ['programCamera', null], ['rosters', null], ['rosters-sim', null], ['projectPath', null], ['projectName', '']]) this.store.set(key, value);
         await this.store.flush();
         return this.info();
     }
