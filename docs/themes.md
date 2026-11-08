@@ -53,7 +53,11 @@ That path is always right: inside Lanecast it is served from the app, in a brows
 | `Lanecast.state` | the latest state message, or `null` before the first |
 | `Lanecast.camera(ref)` | put a camera on the program, by its name as typed on the Camera tab, or its id. Unknown: ignored |
 | `Lanecast.layout({ x, y, w, h, fit })` | place the camera inside the picture: fractions 0–1 of the picture's width and height; `fit` `'contain'` (default) or `'cover'`. `{ x: 0, y: 0, w: 1, h: 1 }` fills it |
-| `Lanecast.send(data)` | overlay → control panel, or control panel → overlay; `data` is any JSON |
+| `Lanecast.send(data)` | to the theme's other pages; each gets it as `Lanecast.on('<sender's role>', …)`: `'overlay'`, `'control'` or `'dialog'`. `data` is any JSON |
+| `Lanecast.dialog(page, { title, width, height })` | pop out another page of the theme as a modal over the Stream tab, for anything too detailed for the control panel: colours, logos, titles. `page` is a file in the theme folder |
+| `Lanecast.closeDialog()` | close it, from inside the dialog or from anywhere else |
+| `Lanecast.settings` / `Lanecast.on('settings', fn)` | the theme's saved settings, an object of your own design; `fn` runs at start (right after hello) and on every change |
+| `Lanecast.saveSettings(partial)` | merge into the saved settings; Lanecast keeps them per theme across runs and hands the result to every page |
 | `Lanecast.log(…)` | shows in the Theme tab's console, for debugging |
 | `Lanecast.ordinal(n)` | `1 → "1st"`, `2 → "2nd"`… |
 
@@ -111,6 +115,12 @@ Both pages can direct; the control panel is the natural home for manual cuts, th
 ## The control panel
 
 Buttons for the person at the laptop: show or hide a graphic, play a sting, cut a camera, bring up a sponsor. Design it portrait, as you would a phone screen: the drawer is narrow and tall and scrolls. The page talks to the overlay with `Lanecast.send({ action: 'results', on: true })` and the overlay listens with `Lanecast.on('control', m => …)`; the shape of `data` is entirely yours. The panel also receives `state` and events, so it can show the current camera or disable a button while racing. See `themes/template/control.html`.
+
+## Dialogs and settings
+
+A control panel is narrow; detailed configuration — team colours, logos, the meet name, which graphics to use — goes in a page you pop out with `Lanecast.dialog('settings.html', { title: 'Theme settings', width: 520, height: 520 })`. The dialog is one of your pages in a modal with a Close button; inside it, `Lanecast.closeDialog()` closes it (Save and Cancel in the template).
+
+What the user chooses is kept with `Lanecast.saveSettings({ accent: '#ffcc33', logo: 'data:image/png;base64,…' })`: Lanecast stores it per theme, across runs, and sends the merged object to every page of the theme through `Lanecast.on('settings', s => …)`, once right after hello and again on each save. The overlay applies it (set a CSS variable, show a logo); the dialog fills its form from it. Images can be read from an `<input type="file">` and saved as data URLs; keep them to a few hundred kilobytes. `themes/template/settings.html` shows all of it.
 
 ## Trying a theme
 
