@@ -1,4 +1,5 @@
-/* Draws the app icon: build/icon.png (1024 px, transparent corners) and, on macOS, build/icon.icns.
+/* Draws the app icons: build/icon.png (1024 px, edge to edge, for Windows and Linux), build/icon-mac.png
+ * (the same mark on Apple's icon grid, with its transparent margin) and, on macOS, build/icon.icns from it.
  * The mark is simple geometry (see assets/logo.svg), so it is rasterised here in plain Node with
  * supersampled coverage, no browser or image library involved.
  *
@@ -28,35 +29,45 @@ const shapes = [
     [disc(382, 256, 30), GREEN, 1]
 ];
 
-const pixels = Buffer.alloc(SIZE * SIZE * 4);
-for (let y = 0; y < SIZE; y++) for (let x = 0; x < SIZE; x++) {
-    let r = 0, g = 0, b = 0, a = 0;                          // premultiplied accumulation over the subsamples
-    for (let sy = 0; sy < SS; sy++) for (let sx = 0; sx < SS; sx++) {
-        const px = (x + (sx + 0.5) / SS) / S, py = (y + (sy + 0.5) / SS) / S;
-        let cr = 0, cg = 0, cb = 0, ca = 0;
-        for (const [inside, colour, alpha] of shapes) if (inside(px, py)) { cr = cr * (1 - alpha) + colour[0] * alpha; cg = cg * (1 - alpha) + colour[1] * alpha; cb = cb * (1 - alpha) + colour[2] * alpha; ca = ca + alpha * (1 - ca); }
-        r += cr * ca; g += cg * ca; b += cb * ca; a += ca;
+/** Rasterise the mark into a SIZE×SIZE canvas, the artwork filling `fill` of its width (centred, transparent around). */
+function render(fill) {
+    const pixels = Buffer.alloc(SIZE * SIZE * 4), inset = (1 - fill) / 2 * 512;
+    for (let y = 0; y < SIZE; y++) for (let x = 0; x < SIZE; x++) {
+        let r = 0, g = 0, b = 0, a = 0;                          // premultiplied accumulation over the subsamples
+        for (let sy = 0; sy < SS; sy++) for (let sx = 0; sx < SS; sx++) {
+            const px = ((x + (sx + 0.5) / SS) / S - inset) / fill, py = ((y + (sy + 0.5) / SS) / S - inset) / fill;
+            let cr = 0, cg = 0, cb = 0, ca = 0;
+            for (const [inside, colour, alpha] of shapes) if (inside(px, py)) { cr = cr * (1 - alpha) + colour[0] * alpha; cg = cg * (1 - alpha) + colour[1] * alpha; cb = cb * (1 - alpha) + colour[2] * alpha; ca = ca + alpha * (1 - ca); }
+            r += cr * ca; g += cg * ca; b += cb * ca; a += ca;
+        }
+        const i = (y * SIZE + x) * 4, n = SS * SS;
+        if (a > 0) { pixels[i] = Math.round(r / a); pixels[i + 1] = Math.round(g / a); pixels[i + 2] = Math.round(b / a); }
+        pixels[i + 3] = Math.round(255 * a / n);
     }
-    const i = (y * SIZE + x) * 4, n = SS * SS;
-    if (a > 0) { pixels[i] = Math.round(r / a); pixels[i + 1] = Math.round(g / a); pixels[i + 2] = Math.round(b / a); }
-    pixels[i + 3] = Math.round(255 * a / n);
+    return pixels;
 }
 // PNG: one filter byte (0) per row, deflated, with CRCs.
 const crcTable = Array.from({ length: 256 }, (_, n) => { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1; return c >>> 0; });
 const crc = buf => { let c = 0xffffffff; for (const byte of buf) c = crcTable[(c ^ byte) & 0xff] ^ (c >>> 8); return (c ^ 0xffffffff) >>> 0; };
 const chunk = (type, data) => { const len = Buffer.alloc(4); len.writeUInt32BE(data.length); const td = Buffer.concat([Buffer.from(type), data]); const c = Buffer.alloc(4); c.writeUInt32BE(crc(td)); return Buffer.concat([len, td, c]); };
-const raw = Buffer.alloc((SIZE * 4 + 1) * SIZE);
-for (let y = 0; y < SIZE; y++) { raw[y * (SIZE * 4 + 1)] = 0; pixels.copy(raw, y * (SIZE * 4 + 1) + 1, y * SIZE * 4, (y + 1) * SIZE * 4); }
-const ihdr = Buffer.alloc(13); ihdr.writeUInt32BE(SIZE, 0); ihdr.writeUInt32BE(SIZE, 4); ihdr[8] = 8; ihdr[9] = 6; ihdr[10] = 0; ihdr[11] = 0; ihdr[12] = 0;
-const png = Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), chunk('IHDR', ihdr), chunk('IDAT', zlib.deflateSync(raw, { level: 9 })), chunk('IEND', Buffer.alloc(0))]);
+function png(pixels) {
+    const raw = Buffer.alloc((SIZE * 4 + 1) * SIZE);
+    for (let y = 0; y < SIZE; y++) { raw[y * (SIZE * 4 + 1)] = 0; pixels.copy(raw, y * (SIZE * 4 + 1) + 1, y * SIZE * 4, (y + 1) * SIZE * 4); }
+    const ihdr = Buffer.alloc(13); ihdr.writeUInt32BE(SIZE, 0); ihdr.writeUInt32BE(SIZE, 4); ihdr[8] = 8; ihdr[9] = 6; ihdr[10] = 0; ihdr[11] = 0; ihdr[12] = 0;
+    return Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), chunk('IHDR', ihdr), chunk('IDAT', zlib.deflateSync(raw, { level: 9 })), chunk('IEND', Buffer.alloc(0))]);
+}
 
 const out = path.join(__dirname, '..', 'build');
 fs.mkdirSync(out, { recursive: true });
-const file = path.join(out, 'icon.png');
-fs.writeFileSync(file, png);
-console.log('build/icon.png', SIZE + 'x' + SIZE, png.length + ' bytes');
+// Windows and Linux icons fill their canvas. A macOS icon sits on Apple's grid, its shape 824 of the 1024 points
+// with a transparent margin all round; drawn edge to edge it looks oversized in the Dock beside the others.
+const full = png(render(1)), mac = png(render(824 / 1024));
+fs.writeFileSync(path.join(out, 'icon.png'), full);
+fs.writeFileSync(path.join(out, 'icon-mac.png'), mac);
+console.log(`build/icon.png ${SIZE}x${SIZE} ${full.length} bytes; build/icon-mac.png ${mac.length} bytes`);
 if (process.platform === 'darwin') {
     // An .icns from the standard icon set, with sips and iconutil, which every Mac has.
+    const file = path.join(out, 'icon-mac.png');
     const set = fs.mkdtempSync(path.join(os.tmpdir(), 'lanecast-icon-')) + '/icon.iconset';
     fs.mkdirSync(set);
     for (const size of [16, 32, 128, 256, 512]) {

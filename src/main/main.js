@@ -62,7 +62,7 @@ async function chooseMedia(id) {
 }
 
 app.whenReady().then(async () => {
-    if (process.platform === 'darwin' && app.dock) app.dock.setIcon(ICON);
+    if (process.platform === 'darwin' && app.dock) app.dock.setIcon(path.join(path.dirname(ICON), 'icon-mac.png'));     // on Apple's icon grid, with its margin
     store = new Store(path.join(app.getPath('userData'), 'lanecast.json'));
     await store.load();
     const saved = store.get('simulate', {});
