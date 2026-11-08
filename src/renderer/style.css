@@ -1,16 +1,16 @@
 :root{color-scheme:dark;--bg:#0b1119;--card:#121d29;--line:#263545;--muted:#9aaec2;--accent:#74e5c1;--text:#edf4fb;--ready:#4ade80;--sim:#c8a2ff}
 *{box-sizing:border-box}
-body{margin:0;background:var(--bg);color:var(--text);font:15px/1.5 system-ui,sans-serif;-webkit-user-select:none;user-select:none}
-main{max-width:1400px;margin:auto;padding:20px 28px}
+html,body{height:100%}
+body{margin:0;background:var(--bg);color:var(--text);font:15px/1.5 system-ui,sans-serif;-webkit-user-select:none;user-select:none;overflow:hidden;display:flex;flex-direction:column}
+main{flex:1;min-height:0;overflow:auto;width:100%;max-width:1600px;margin:auto;padding:16px 24px}
 h2{font-size:17px;margin:0 0 12px}h2.later{margin-top:28px}
 h3{font-size:13px;margin:22px 0 4px;letter-spacing:.3px}h3.later{margin-top:26px}
 p{color:var(--muted);margin:8px 0 16px}
 .small{font-size:12px}
 .eyebrow{font-size:10px;font-weight:750;letter-spacing:2px}
-.banner{margin:0 0 20px;padding:10px 16px;border:1px solid var(--line);border-radius:8px;color:var(--muted);font-size:13px}
 
 /* Tabs across the top. The dot is green when that part is ready to go, and quiet otherwise. */
-.tabs{display:flex;align-items:center;gap:4px;padding:10px 20px 0;border-bottom:1px solid var(--line);background:#0d1520;position:sticky;top:0;z-index:1}
+.tabs{display:flex;align-items:center;gap:4px;padding:6px 20px 0;border-bottom:1px solid var(--line);background:#0d1520;flex:none}
 .tabs [role=tab]{background:none;border:0;border-bottom:2px solid transparent;border-radius:0;color:var(--muted);font:600 14px system-ui;padding:12px 18px;margin-bottom:-1px;display:inline-flex;align-items:center;gap:9px;cursor:pointer}
 .tabs [role=tab]:hover{color:var(--text);filter:none}
 .tabs [role=tab][aria-selected=true]{color:var(--text);border-bottom-color:var(--accent)}
@@ -33,13 +33,13 @@ p{color:var(--muted);margin:8px 0 16px}
 .panel-head{display:flex;align-items:center;margin:0 0 16px}.panel-head h2{margin:0}
 .stack{display:grid;gap:18px}
 /* Controls for a simulated part, in place of the real ones. */
-.sim-panel{margin:0;padding:0 16px 4px;border:1px solid #5a4a7a;border-radius:10px}
-.sim-panel summary{display:flex;align-items:center;gap:14px;padding:12px 0;list-style:none;cursor:pointer;color:var(--muted)}
+.sim-panel{margin:0;padding:0 14px 0;border:1px solid #5a4a7a;border-radius:10px;display:block}
+.sim-panel summary{display:flex;align-items:center;gap:14px;padding:11px 0;list-style:none;cursor:pointer;color:var(--muted)}
 .sim-panel summary::-webkit-details-marker{display:none}
 .sim-panel summary::before{content:"▸";color:var(--sim);font-size:12px;transition:transform .15s}
 .sim-panel[open] summary::before{transform:rotate(90deg)}
 .sim-panel summary .eyebrow{color:var(--sim);margin:0}
-.sim-row{display:flex;align-items:flex-end;gap:22px;padding:2px 0 12px}
+.sim-row{display:flex;align-items:flex-end;gap:18px;padding:0 0 12px}
 .sim-row .eyebrow{margin:0 0 6px;color:var(--muted)}
 .sim-row .stepper{border:1px solid #3a4f63;border-radius:8px;padding:3px;background:#0c1620}
 .sim-row .stepper input{border:0;background:transparent}
@@ -78,6 +78,8 @@ table{width:100%;border-collapse:collapse;white-space:nowrap}
 th{color:var(--muted);font-size:10px;letter-spacing:1px;text-transform:uppercase}
 td,th{padding:9px 10px;border-bottom:1px solid var(--line);text-align:center}tr:last-child td{border-bottom:0}
 td:first-child{color:var(--muted)}
+input.edit{width:100%;min-width:120px;background:#0c1620;color:var(--text);border:1px solid var(--accent);border-radius:4px;padding:4px 6px;font:inherit;text-align:center;-webkit-user-select:text;user-select:text}input.edit.team{min-width:60px;text-transform:uppercase}
+#startList tr[data-lane]{cursor:text}#startList tr[data-lane]:hover td{background:rgba(116,229,193,.06)}
 .data .time{font:600 15px ui-monospace,monospace;color:var(--accent)}.data .faint{color:var(--muted)}
 .stepper{display:flex;align-items:center;gap:4px}
 .stepper input{width:60px;background:#0c1620;color:var(--text);border:1px solid #3a4f63;border-radius:5px;padding:4px;font:600 24px ui-monospace,monospace;text-align:center;-moz-appearance:textfield}
@@ -96,13 +98,15 @@ td:first-child{color:var(--muted)}
 .quiet{background:none;border-color:transparent;color:var(--muted);padding:8px 10px}.quiet:hover{color:var(--text);filter:none}
 #error{padding:15px;background:#2a2430;border:1px solid #6b5a7a;border-radius:8px;color:#e9ddf2;margin-top:18px}
 
-/* Stream: the program, near full screen, and a bar of controls under it. */
-.program{display:flex;flex-direction:column;gap:14px}
-.stage{position:relative;width:100%;max-height:calc(100vh - 190px);aspect-ratio:16/9;margin:auto;background:#060a0f;border:1px solid var(--line);border-radius:12px;overflow:hidden}
+/* Stream: a deck of controls, then the program as large as fits, 16:9, nothing to scroll. */
+.program{display:flex;flex-direction:column;gap:12px}
+.deck{display:flex;gap:12px;align-items:stretch;flex-wrap:wrap}
+.box{border:1px solid var(--line);border-radius:10px;padding:8px 12px;display:flex;align-items:center;gap:10px}
+.program-box{background:var(--card)}
+.stage{position:relative;width:100%;margin:0 auto;background:#060a0f;border:1px solid var(--line);border-radius:12px;overflow:hidden}
 .stage video{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;background:#000}
 .stage-note{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;margin:0;color:var(--muted);font-size:14px}.stage-note[hidden]{display:none}
-.program-bar{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
-.program-bar .live{padding:12px 22px;font-size:14px}
+.program-box .live{padding:10px 20px;font-size:14px}
 /* The overlay drawn on the program: a lower third with the event, the clock and the lanes. */
 .bug{position:absolute;left:3%;right:3%;bottom:5%;font-family:system-ui,sans-serif;text-shadow:0 1px 2px rgba(0,0,0,.6);pointer-events:none}
 .bug-top{display:flex;align-items:stretch;gap:2px}

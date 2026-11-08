@@ -13,20 +13,21 @@
 <button role="tab" id="tab-stream" aria-controls="stream" aria-selected="false"><i class="dot" data-ready="false"></i>Stream<b class="live-badge" id="liveBadge" hidden>Live</b></button>
 <button role="tab" id="tab-timer" aria-controls="timer" aria-selected="false"><i class="dot" data-ready="false"></i>Timer<b class="sim-badge" hidden>Sim</b></button>
 <button role="tab" id="tab-events" aria-controls="events" aria-selected="false"><i class="dot" data-ready="false"></i>Events<b class="sim-badge" hidden>Sim</b></button>
-<button role="tab" id="tab-cameras" aria-controls="cameras" aria-selected="false"><i class="dot" data-ready="false"></i>Cameras<b class="sim-badge" hidden>Sim</b></button>
+<button role="tab" id="tab-cameras" aria-controls="cameras" aria-selected="false"><i class="dot" data-ready="false"></i><span id="camerasLabel">Camera</span><b class="sim-badge" hidden>Sim</b></button>
 <button role="tab" id="tab-theme" aria-controls="theme" aria-selected="false"><i class="dot" data-ready="false"></i>Theme</button>
 </nav>
 <main>
-<p id="banner" class="banner" role="note" hidden></p>
-
 <section id="stream" role="tabpanel" aria-labelledby="tab-stream" hidden>
 <div class="program">
-<details id="simConsole" class="sim-panel" hidden><summary><span class="eyebrow">SIMULATION CONTROL</span><span id="simSummary" class="small"></span></summary>
+<div class="deck">
+<div class="box program-box"><button id="goLive" class="primary live">Go Live</button><button id="configure">Configure</button><span id="programStatus" class="small">Idle</span></div>
+<details id="simConsole" class="sim-panel box" hidden><summary><span class="eyebrow">SIMULATION CONTROL</span><span id="simSummary" class="small"></span></summary>
 <div class="sim-row">
 <div><p class="eyebrow">EVENT</p><div class="stepper"><button id="simEventDown" class="step" type="button" title="Previous event">−</button><input id="simEventNo" type="number" min="1" max="999" aria-label="Event"><button id="simEventUp" class="step" type="button" title="Next event">+</button></div></div>
 <div><p class="eyebrow">HEAT</p><div class="stepper"><button id="simHeatDown" class="step" type="button" title="Previous heat">−</button><input id="simHeatNo" type="number" min="1" max="99" aria-label="Heat"><button id="simHeatUp" class="step" type="button" title="Next heat">+</button></div></div>
 <div><p class="eyebrow">&nbsp;</p><button id="simRun" class="latch" type="button" aria-pressed="false" title="From this event and heat: lineup, race, results, next heat, through every event loaded, round and round">Run</button></div>
 </div></details>
+</div>
 <div class="stage" id="stage">
 <video id="programVideo" autoplay muted playsinline></video>
 <div class="bug" id="bug" hidden>
@@ -34,10 +35,6 @@
 <ol class="bug-lanes" id="bugLanes"></ol>
 </div>
 <p class="stage-note" id="stageNote">No camera. Add one on the Cameras tab.</p>
-</div>
-<div class="program-bar">
-<button id="goLive" class="primary live">Go Live</button><button id="configure">Configure</button>
-<span id="programStatus" class="small">Not streaming</span>
 </div>
 </div>
 <dialog id="configureDialog" class="wide"><form method="dialog"><h3>Configure the stream</h3>
@@ -72,9 +69,9 @@
 <div class="readout"><div><p class="eyebrow">EVENTS LOADED</p><strong id="eventsLoaded">0</strong><p id="heatsLoaded" class="small">no heats</p></div><div><p class="eyebrow">LAST RECEIVED</p><strong id="lastNo">— / —</strong><p class="small">event / heat</p></div></div>
 <h2 class="later">Start lists</h2>
 <div class="actions"><button id="fetchSim" class="primary" hidden>Fetch simulated events</button><button id="loadFiles">Load</button><button id="saveFiles">Save</button><button id="clearRosters">Clear</button><span id="fileStatus" class="small"></span></div></article>
-<article><h2>Start lists</h2>
+<article><h2>Start lists <span class="count">click a lane to edit</span></h2>
 <div class="readout"><div><p class="eyebrow">EVENT <span id="storedEvents" class="count"></span></p><div class="stepper"><button id="eventDown" class="step" type="button" title="Previous stored event">−</button><input id="viewEventNo" type="number" min="1" max="999" aria-label="Event"><button id="eventUp" class="step" type="button" title="Next stored event">+</button></div></div>
-<div><p class="eyebrow">HEAT <span id="heatCount" class="count"></span></p><div class="stepper"><button id="heatDown" class="step" type="button" title="Previous heat">−</button><input id="viewHeatNo" type="number" min="1" max="99" aria-label="Heat"><button id="heatUp" class="step" type="button" title="Next heat">+</button><button id="follow" class="latch" type="button" aria-pressed="true" title="Jump to each start list as it arrives">Show latest</button></div></div></div>
+<div><p class="eyebrow">HEAT <span id="heatCount" class="count"></span></p><div class="stepper"><button id="heatDown" class="step" type="button" title="Previous heat">−</button><input id="viewHeatNo" type="number" min="1" max="99" aria-label="Heat"><button id="heatUp" class="step" type="button" title="Next heat">+</button></div></div></div>
 <h3 id="viewTitle" class="event-title">No event data</h3>
 <table class="data"><thead><tr><th>Lane</th><th>Swimmer / relay</th><th>Team</th></tr></thead><tbody id="startList"></tbody></table></article>
 </div></section>
@@ -88,8 +85,8 @@
 <p id="noCameras" class="small">No cameras yet. Add one on the right.</p></article>
 <div class="stack">
 <article id="camSim" hidden><h2>Simulated camera</h2>
-<p class="small">A photo or video taken from where the camera will stand, so the overlays can be judged against the real view. Without one, a drawn pool stands in.</p>
-<div class="actions"><button id="chooseMedia" class="primary">Choose photo or video…</button><button id="clearMedia">Use the drawn pool</button></div>
+<p class="small">A photo or video taken from where the camera will stand, so the overlays can be judged against the real view.</p>
+<div class="actions"><button id="chooseMedia" class="primary">Choose photo or video…</button><button id="clearMedia">Remove</button></div>
 <p id="mediaName" class="small"></p></article>
 <article id="camAdd"><h2>Add a camera</h2>
 <div class="field"><label for="camName">Name</label><input id="camName" placeholder="Pool, wide"></div>
