@@ -25,13 +25,13 @@ my-theme/
 }
 ```
 
-`control` is optional; a bare string is the page with a default size. Width and height are pixels in the Stream tab's deck; keep it small, it sits above the picture.
+`control` is optional; a bare string is just the page. The control panel is shown in a drawer down the right side of the Stream tab, portrait like a phone, as tall as the picture; `width` (pixels) is the width the drawer opens at (the user can drag it), and `height` is only needed if the page should not fill the drawer's height (the drawer scrolls if it is taller). The user can hide the drawer for the full picture.
 
 Built-in themes live in `themes/` in the repository and ship with the app. Yours live in the app's data folder, `themes/` inside it: **Theme tab → Open my themes folder**. **New theme from the template** copies `themes/template/` there under your name and switches to it. After editing files, press **Reload** on the Theme tab.
 
 ## The pages
 
-Both pages are plain HTML. Lanecast loads them in sandboxed frames: the overlay over the program picture, transparent wherever you draw nothing, the exact size of the picture (16:9); the control panel in a box in the Stream tab. Size overlay graphics in `vh`/`vw` and they scale with the stream.
+Both pages are plain HTML. Lanecast loads them in sandboxed frames: the overlay over the program picture, transparent wherever you draw nothing, the exact size of the picture (16:9); the control panel in the drawer beside it. Size overlay graphics in `vh`/`vw` and they scale with the stream.
 
 Each page loads the runtime with one script tag:
 
@@ -110,7 +110,7 @@ Both pages can direct; the control panel is the natural home for manual cuts, th
 
 ## The control panel
 
-Buttons for the person at the laptop: show or hide a graphic, play a sting, cut a camera, bring up a sponsor. The page talks to the overlay with `Lanecast.send({ action: 'results', on: true })` and the overlay listens with `Lanecast.on('control', m => …)`; the shape of `data` is entirely yours. The panel also receives `state` and events, so it can show the current camera or disable a button while racing. See `themes/template/control.html`.
+Buttons for the person at the laptop: show or hide a graphic, play a sting, cut a camera, bring up a sponsor. Design it portrait, as you would a phone screen: the drawer is narrow and tall and scrolls. The page talks to the overlay with `Lanecast.send({ action: 'results', on: true })` and the overlay listens with `Lanecast.on('control', m => …)`; the shape of `data` is entirely yours. The panel also receives `state` and events, so it can show the current camera or disable a button while racing. See `themes/template/control.html`.
 
 ## Trying a theme
 

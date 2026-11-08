@@ -43,7 +43,7 @@ Lanecast.ordinal(3)                 // "3rd"
 2. Redraw from `state` (what is on the board) and animate from events (what just happened). Rebuild DOM only when the content changed; `state` arrives ten times a second.
 3. Before the start, show the lineup (`lanes` with a `name`); during, splits as they appear; after, finishers sorted by `place`. `heat.finish` is the moment for a results board; `event.finish` for a summary or sponsor card.
 4. Direct the picture if it helps: `race.start` → `Lanecast.camera('Finish')`; `heat.finish` → back to `'Wide'` after a few seconds; `Lanecast.layout` for picture-in-picture while a board is up. Camera names are whatever the user typed; match them to the user's setup or make them configurable in the control panel.
-5. A control panel is for things a person should trigger: show/hide a graphic, a sponsor, a manual cut. Keep it to one or two rows; set its `width`/`height` in `theme.json`.
+5. A control panel is for things a person should trigger: show/hide a graphic, a sponsor, a manual cut. It lives in a drawer down the right of the Stream tab, portrait like a phone and as tall as the picture: stack controls vertically, set `control.width` in `theme.json`, leave `height` out so the page fills the drawer (it scrolls if taller).
 6. Test with everything simulated (Stream tab → Simulation control → Run): the simulated meet fires every event every 30–40 s. For the real view, Camera tab → Simulate a camera → a photo from the camera position.
 
 ## Don'ts

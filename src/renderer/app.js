@@ -295,11 +295,13 @@
     function loadTheme(theme) {
         themes.active = theme; themes.ready = { overlay: false, control: false };
         frames.overlay.src = theme ? `${theme.url}${theme.overlay}?role=overlay` : 'about:blank';
-        $('controlBox').hidden = !theme?.control;
-        if (theme?.control) { frames.control.style.width = theme.control.width + 'px'; frames.control.style.height = theme.control.height + 'px'; frames.control.src = `${theme.url}${theme.control.page}?role=control`; }
-        else frames.control.src = 'about:blank';
+        $('drawerToggle').hidden = !theme?.control;
+        if (theme?.control) {
+            if (!drawer.sized && theme.control.width) $('drawer').style.width = Math.max(240, theme.control.width) + 'px';    // the theme's preferred width, until the user drags
+            frames.control.src = `${theme.url}${theme.control.page}?role=control`;
+        } else frames.control.src = 'about:blank';
         setLayout({ x: 0, y: 0, w: 1, h: 1, fit: 'contain' });
-        requestAnimationFrame(fitStage);
+        applyDrawer();
     }
     /** Where the camera sits in the picture, as fractions, set by the theme. */
     function setLayout(box) {
@@ -518,21 +520,40 @@
     $('simEventNo').onchange = e => { const n = Math.floor(Number(e.target.value)); if (n >= 1) simCall(api.sim.control(n, 1)); else render(); };
     $('simHeatNo').onchange = e => { const n = Math.floor(Number(e.target.value)); if (n >= 1) simCall(api.sim.control(simEvent(), n)); else render(); };
     $('simRun').onclick = () => simCall(api.sim.run(!sim.running, simEvent(), simHeat()));
-    $('simConsole').addEventListener('toggle', () => api.store.set('simConsoleOpen', $('simConsole').open).catch(() => {}));
     $('fetchSim').onclick = fetchSimulatedEvents;
     $('chooseMedia').onclick = async () => { hideError(); try { await api.sim.chooseMedia(); } catch (e) { showError(e); } };
     $('clearMedia').onclick = async () => { hideError(); try { await api.sim.clearMedia(); } catch (e) { showError(e); } };
 
     // ---- fit ------------------------------------------------------------------------------
-    /** The stage fills what is left under the deck, 16:9, so the Stream tab never scrolls. */
+    /** The stage fills what is left under the top bar beside the drawer, 16:9; the drawer is as tall as the stage. Nothing scrolls. */
     function fitStage() {
-        const stage = $('stage'); if ($('stream').hidden) return;
-        const top = stage.getBoundingClientRect().top, availableH = Math.max(180, window.innerHeight - top - 20), availableW = stage.parentElement.clientWidth;
-        const w = Math.min(availableW, availableH * 16 / 9);
-        stage.style.width = w + 'px'; stage.style.height = (w * 9 / 16) + 'px';
+        const stage = $('stage'), work = $('work'), side = $('drawer'); if ($('stream').hidden) return;
+        const top = work.getBoundingClientRect().top, availableH = Math.max(180, window.innerHeight - top - 16);
+        const drawerW = side.hidden ? 0 : side.offsetWidth + 12, availableW = Math.max(240, work.clientWidth - drawerW);
+        const w = Math.min(availableW, availableH * 16 / 9), h = w * 9 / 16;
+        stage.style.width = w + 'px'; stage.style.height = h + 'px';
+        side.style.height = Math.max(h, 200) + 'px';
+        const control = themes.active?.control;
+        frames.control.style.height = control?.height ? control.height + 'px' : '100%';
     }
     window.addEventListener('resize', fitStage);
-    $('simConsole').addEventListener('toggle', () => requestAnimationFrame(fitStage));
+    // The drawer: the theme's control panel on the right. Hide it for the full picture; drag its left edge to resize.
+    const drawer = { open: true, sized: false };
+    function applyDrawer() {
+        const has = !!themes.active?.control;
+        $('drawer').hidden = !has || !drawer.open;
+        $('drawerToggle').setAttribute('aria-pressed', String(drawer.open));
+        $('drawerToggle').textContent = drawer.open ? 'Hide controls' : 'Show controls';
+        fitStage(); requestAnimationFrame(fitStage);
+    }
+    $('drawerToggle').onclick = () => { drawer.open = !drawer.open; api.store.set('drawer', { open: drawer.open, width: drawer.sized ? $('drawer').offsetWidth : null }).catch(() => {}); applyDrawer(); };
+    $('drawerGrip').addEventListener('mousedown', e => {
+        e.preventDefault();
+        const startX = e.clientX, startW = $('drawer').offsetWidth, grip = $('drawerGrip'); grip.classList.add('active');
+        const move = ev => { const w = Math.max(240, Math.min($('work').clientWidth * 0.6, startW + (startX - ev.clientX))); $('drawer').style.width = w + 'px'; fitStage(); };
+        const up = () => { window.removeEventListener('mousemove', move); window.removeEventListener('mouseup', up); grip.classList.remove('active'); drawer.sized = true; api.store.set('drawer', { open: drawer.open, width: $('drawer').offsetWidth }).catch(() => {}); };
+        window.addEventListener('mousemove', move); window.addEventListener('mouseup', up);
+    });
 
     // ---- tabs ----------------------------------------------------------------------------
     function showTab(name, remember = true) {
@@ -604,7 +625,8 @@
         document.title = `Lanecast ${info.version}`;
         remembered = (await api.store.get('ports')) || {};
         programCamera = (await api.store.get('programCamera')) || null;
-        $('simConsole').open = (await api.store.get('simConsoleOpen')) !== false;
+        const savedDrawer = await api.store.get('drawer');
+        if (savedDrawer) { drawer.open = savedDrawer.open !== false; if (savedDrawer.width) { drawer.sized = true; $('drawer').style.width = savedDrawer.width + 'px'; } }
         showTab((await api.store.get('tab')) || 'stream', false);
         relay = await api.relay.status();
         engine = await api.cameras.status();
