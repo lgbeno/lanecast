@@ -23,6 +23,8 @@ function findFfmpeg() {
     catch (e) { return null; }
 }
 const yamlString = s => JSON.stringify(String(s));
+/** A camera attached to this computer (a webcam, an iPhone as a camera): the window opens it itself, by device id. */
+const isDevice = c => /^device:/.test(c.url);
 
 class CameraEngine {
     /** `cameras` is [{ id, name, url }]; `onChange(cameras)` is called to persist it, `onStatus(state)` on engine changes. */
@@ -43,7 +45,7 @@ class CameraEngine {
             'rtsp:', `  listen: ${yamlString('127.0.0.1:' + this.rtspPort)}`,
             'webrtc:', `  listen: ${yamlString(':' + this.webrtcPort)}`, '  ice_servers: []',
             'log:', '  level: "warn"', 'streams:'];
-        for (const c of this.cameras) lines.push(`  ${yamlString(c.id)}: ${yamlString(c.url)}`);
+        for (const c of this.cameras) if (!isDevice(c)) lines.push(`  ${yamlString(c.id)}: ${yamlString(c.url)}`);   // local cameras never go through go2rtc
         fs.mkdirSync(path.dirname(this.config), { recursive: true });
         fs.writeFileSync(this.config, lines.join('\n') + '\n');
     }
@@ -83,7 +85,7 @@ class CameraEngine {
     async list() {
         let streams = {};
         if (this.running) { try { streams = await (await fetch(this.api + '/api/streams')).json(); } catch (e) { /* engine busy or gone */ } }
-        return this.cameras.map(c => { const s = streams[c.id] || {}; return { ...c, producers: (s.producers || []).length, consumers: (s.consumers || []).length }; });
+        return this.cameras.map(c => { const s = streams[c.id] || {}; return { ...c, local: isDevice(c), producers: (s.producers || []).length, consumers: (s.consumers || []).length }; });
     }
     async add({ name, url }) {
         name = String(name || '').trim(); url = String(url || '').trim();
@@ -93,7 +95,7 @@ class CameraEngine {
         const id = 'cam-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
         const camera = { id, name: name || `Camera ${this.cameras.length + 1}`, url };
         this.cameras.push(camera); this.onChange(this.cameras); this.writeConfig();
-        if (this.running) {
+        if (this.running && !isDevice(camera)) {
             // go2rtc answers this with 400 when it cannot rewrite its own config, yet still adds the stream; the list is what counts.
             try { await fetch(`${this.api}/api/streams?name=${encodeURIComponent(id)}&src=${encodeURIComponent(url)}`, { method: 'PUT' }); } catch (e) { /* checked below */ }
             const streams = await (await fetch(this.api + '/api/streams')).json().catch(() => ({}));
@@ -111,8 +113,8 @@ class CameraEngine {
     async remove(id) {
         const index = this.cameras.findIndex(c => c.id === id);
         if (index < 0) return;
-        this.cameras.splice(index, 1); this.onChange(this.cameras); this.writeConfig();
-        if (this.running) { try { await fetch(`${this.api}/api/streams?src=${encodeURIComponent(id)}`, { method: 'DELETE' }); } catch (e) { /* gone anyway */ } }
+        const [gone] = this.cameras.splice(index, 1); this.onChange(this.cameras); this.writeConfig();
+        if (this.running && !isDevice(gone)) { try { await fetch(`${this.api}/api/streams?src=${encodeURIComponent(id)}`, { method: 'DELETE' }); } catch (e) { /* gone anyway */ } }
     }
 }
 

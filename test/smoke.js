@@ -83,6 +83,11 @@ app.on('browser-window-created', (event, win) => {
         const cams = await js(`({ tiles: document.querySelectorAll('.tile').length, status: [...document.querySelectorAll('.tile .small')].map(s => s.textContent), media: ${text('mediaName')}, engine: ${text('engineStatus')}, ready: ${dots},
             program: document.getElementById('programVideo').videoWidth, note: document.getElementById('stageNote').hidden, bug: document.getElementById('overlayFrame').src.startsWith('theme://b-classic/overlay.html'), pstatus: ${text('programStatus')}, theme: ${text('themeStatus')} })`);
         check(cams.tiles === 1 && /^Live · 1280×720/.test(cams.status[0]) && cams.media === 'Photo: icon.png', `the simulated camera shows the remembered photo, live: ${cams.status.join(' / ')} · ${cams.media}`);
+        // This computer's cameras are listed without asking for access first; the list may be empty on a build machine.
+        await js(`document.getElementById('tab-cameras').click(); document.querySelector('#cameras .simToggle').click()`); await wait(800);
+        const local = await js(`({ list: document.getElementById('deviceList').textContent, rows: document.querySelectorAll('.device').length, note: ${text('deviceNote')}, find: !!document.getElementById('findDevices') })`);
+        check(local.find && (local.rows > 0 || /Find cameras|No cameras/.test(local.list)), `local cameras listed or none found: ${local.rows} row(s) · ${local.list.slice(0, 60)}`);
+        await js(`document.querySelector('#cameras .simToggle').click(); document.getElementById('tab-stream').click()`); await wait(1500);
         check(/^Camera engine running/.test(cams.engine), 'camera engine running: ' + cams.engine);
         const pixel = await js(`(() => { const v = document.getElementById('programVideo'), c = document.createElement('canvas'); c.width = 64; c.height = 36; const x = c.getContext('2d'); x.drawImage(v, 0, 0, 64, 36); const d = x.getImageData(0, 0, 64, 36).data; let lit = 0; for (let i = 0; i < d.length; i += 4) if (d[i] + d[i + 1] + d[i + 2] > 120) lit++; return lit; })()`);
         check(pixel > 200, `the photo is actually drawn (lit pixels in the program: ${pixel})`);

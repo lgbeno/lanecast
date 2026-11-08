@@ -73,6 +73,10 @@ app.whenReady().then(async () => {
     const saved = store.get('simulate', {});
     for (const p of PARTS) simulated[p] = allSimulated || !!(saved && saved[p]);
     try { const m = store.get('simMedia'); if (m && m.path) await setMedia(m.path); } catch (e) { simMedia = null; }
+    // The window may open this computer's cameras (webcams, an iPhone as a camera); nothing else asks for permissions.
+    const { session } = require('electron');
+    session.defaultSession.setPermissionRequestHandler((contents, permission, callback) => callback(permission === 'media'));
+    session.defaultSession.setPermissionCheckHandler((contents, permission) => permission === 'media');
     themes = new Themes({ userDir: path.join(app.getPath('userData'), 'themes') });
     await themes.list();
     protocol.handle('theme', request => themes.serve(request));
@@ -119,6 +123,14 @@ ipcMain.handle('sim:mediaBytes', async () => simMedia ? { bytes: new Uint8Array(
 ipcMain.handle('relay:status', () => relay.status());
 ipcMain.on('relay:send', (event, text) => relay.broadcast(text));
 ipcMain.handle('cameras:status', () => cameras.state());
+// macOS asks the person once before a camera on this computer delivers pictures; elsewhere there is nothing to ask.
+ipcMain.handle('cameras:access', async () => {
+    if (process.platform !== 'darwin') return 'granted';
+    const { systemPreferences } = require('electron');
+    const status = systemPreferences.getMediaAccessStatus('camera');
+    if (status === 'granted') return status;
+    return (await systemPreferences.askForMediaAccess('camera')) ? 'granted' : systemPreferences.getMediaAccessStatus('camera');
+});
 ipcMain.handle('cameras:list', () => cameras.list());
 ipcMain.handle('cameras:add', (event, camera) => cameras.add(camera || {}));
 ipcMain.handle('cameras:remove', (event, id) => cameras.remove(String(id)));
