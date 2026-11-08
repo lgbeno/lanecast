@@ -18,10 +18,18 @@ const set = (key, value) => { text = text.replace(new RegExp(`(<key>${key}</key>
 set('CFBundleName', 'Lanecast'); set('CFBundleDisplayName', 'Lanecast');
 fs.writeFileSync(plist, text);
 if (fs.existsSync(icns)) fs.copyFileSync(icns, path.join(bundle, 'Resources', 'electron.icns'));
+// The Dock's tooltip and Finder take the *localized* name, and with none macOS falls back to the folder name, "Electron".
+for (const lproj of ['en.lproj', 'Base.lproj']) {
+    const dir = path.join(bundle, 'Resources', lproj);
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir);
+    fs.writeFileSync(path.join(dir, 'InfoPlist.strings'), 'CFBundleDisplayName = "Lanecast";\nCFBundleName = "Lanecast";\n');
+}
 // Changing the bundle breaks its code signature, and macOS grants no camera (or other) access to an app whose
 // signature does not verify: it will not even show the permission prompt. Sign it again, ad hoc, like Electron ships.
 try { execFileSync('codesign', ['--force', '--deep', '--sign', '-', path.resolve(bundle, '..')], { stdio: ['ignore', 'ignore', 'pipe'] }); }
 catch (e) { console.warn('could not re-sign the development Electron; camera access may be refused:', String(e.stderr || e.message).trim().split('\n')[0]); }
-// Nudge Launch Services and the Dock into noticing the bundle changed.
+// Make Launch Services (which the Dock and Finder ask) read the bundle again.
 const now = new Date(); fs.utimesSync(path.join(bundle, '..'), now, now);
+const lsregister = '/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister';
+try { if (fs.existsSync(lsregister)) execFileSync(lsregister, ['-f', path.resolve(bundle, '..')], { stdio: 'ignore' }); } catch (e) { /* the next launch registers it anyway */ }
 console.log('development Electron branded as Lanecast and re-signed');
