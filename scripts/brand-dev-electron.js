@@ -6,6 +6,7 @@
 'use strict';
 const fs = require('node:fs');
 const path = require('node:path');
+const { execFileSync } = require('node:child_process');
 
 if (process.platform !== 'darwin') process.exit(0);
 const root = path.join(__dirname, '..');
@@ -19,8 +20,8 @@ fs.writeFileSync(plist, text);
 if (fs.existsSync(icns)) fs.copyFileSync(icns, path.join(bundle, 'Resources', 'electron.icns'));
 // Changing the bundle breaks its code signature, and macOS grants no camera (or other) access to an app whose
 // signature does not verify: it will not even show the permission prompt. Sign it again, ad hoc, like Electron ships.
-try { execFileSync('codesign', ['--force', '--deep', '--sign', '-', path.join(bundle, '..')], { stdio: 'ignore' }); }
-catch (e) { console.warn('could not re-sign the development Electron; camera access may be refused'); }
+try { execFileSync('codesign', ['--force', '--deep', '--sign', '-', path.resolve(bundle, '..')], { stdio: ['ignore', 'ignore', 'pipe'] }); }
+catch (e) { console.warn('could not re-sign the development Electron; camera access may be refused:', String(e.stderr || e.message).trim().split('\n')[0]); }
 // Nudge Launch Services and the Dock into noticing the bundle changed.
 const now = new Date(); fs.utimesSync(path.join(bundle, '..'), now, now);
 console.log('development Electron branded as Lanecast and re-signed');
