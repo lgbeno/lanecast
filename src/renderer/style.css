@@ -89,15 +89,18 @@ input.edit{width:100%;min-width:120px;background:#0c1620;color:var(--text);borde
 
 /* Stream: a thin bar of controls, then the program as large as fits beside the theme's drawer, nothing to scroll. */
 .program{display:flex;flex-direction:column;gap:10px}
-.topbar{display:flex;align-items:center;gap:16px;padding:6px 12px;border:1px solid var(--line);border-radius:10px;background:var(--card);min-height:50px;flex-wrap:wrap}
-.topbar .group{display:flex;align-items:center;gap:8px}
+.topbar{display:flex;align-items:flex-end;gap:16px;padding:6px 12px;border:1px solid var(--line);border-radius:10px;background:var(--card);min-height:50px;flex-wrap:wrap}
+.topbar .group{display:flex;align-items:flex-end;gap:8px}
+/* Everything in the bar shares one 40 px row; the Event and Heat labels sit above their boxes. */
+.topbar button,.topbar .stepper.mini{height:40px;box-sizing:border-box}
+.topbar button{padding-top:0;padding-bottom:0}
 .topbar .sim{padding-left:16px;border-left:1px solid var(--line);gap:12px}
-.topbar .labelled{display:flex;flex-direction:column;gap:2px}.topbar .labelled .eyebrow{color:var(--sim);font-size:9px}
+.topbar .labelled{display:flex;flex-direction:column;gap:3px}.topbar .labelled .eyebrow{color:var(--sim);font-size:9px;line-height:1}
 .topbar .sim .latch{margin:0;padding:8px 14px}.topbar .sim .latch[aria-pressed="true"]{background:var(--sim);border-color:var(--sim);color:#1a0f2e}
 .topbar .sim #simSummary{margin-left:6px}
-.stepper.mini{border:1px solid #3a4f63;border-radius:7px;padding:2px;background:#0c1620}
-.stepper.mini input{width:44px;font-size:16px;padding:2px;border:0;background:transparent}.stepper.mini .step{padding:5px 8px;font-size:13px}
-.topbar .live{padding:9px 18px;font-size:14px}
+.stepper.mini{border:1px solid #3a4f63;border-radius:7px;padding:2px;background:#0c1620;display:flex;align-items:center}
+.stepper.mini input{width:44px;font-size:16px;padding:2px;border:0;background:transparent}.stepper.mini .step{height:32px;padding:0 9px;font-size:13px}
+.topbar .live{padding:0 18px;font-size:14px}
 #drawerToggle{margin-left:auto}#drawerToggle[aria-pressed="true"]{background:var(--accent);color:#10261f;border-color:var(--accent)}
 .work{display:flex;gap:12px;justify-content:center;align-items:flex-start}
 .stage{position:relative;flex:none;background:#060a0f;border:1px solid var(--line);border-radius:12px;overflow:hidden}
@@ -137,3 +140,8 @@ input.edit{width:100%;min-width:120px;background:#0c1620;color:var(--text);borde
 .tile .sim-badge{margin-left:2px}
 #cameraDialog{max-width:560px;width:100%}
 .cd-switch{margin:14px 0}.cd-foot{margin-top:22px;justify-content:space-between}
+
+/* The project, at the right end of the tab bar. */
+.tabs .project{margin-left:auto;background:none;border:1px solid var(--line);color:var(--muted);font:600 12px system-ui;padding:7px 12px;border-radius:8px;margin-bottom:6px;max-width:240px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tabs .project:hover{color:var(--text);filter:none;border-color:#3c5266}
+#projectDialog{max-width:520px;width:100%}

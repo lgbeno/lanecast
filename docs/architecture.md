@@ -46,6 +46,10 @@ Two kinds of JSON message, built by `src/protocol/packet.js`, go to the theme's 
 | Stream out | After compositing: WebCodecs (hardware H.264 on Mac/Windows) or a bundled ffmpeg encodes; ffmpeg muxes and pushes RTMP to YouTube. On Linux prefer ffmpeg with VAAPI; Chromium's software encoder there is baseline OpenH264 |
 | Installers | CI builds `.dmg`, `.exe`, `.AppImage`/`.deb` on tags; unsigned until there is a certificate |
 
+## Projects
+
+A `.lanecast` file is a zip (`src/main/zip.js`, written and read without dependencies): `project.json` (cameras with their stand-in paths rewritten to `media/`, the active theme's id and settings, the switches, relay port, program camera, drawer, the start lists), `theme/` (a copy of the active theme's folder at save time) and `media/` (each simulated camera's stand-in). `src/main/project.js` opens one by unpacking `theme/` and `media/` into the data folder's `projects/`, replacing the camera list, registering the theme copy as `p-project` (served over `theme://p-project/` like any other) and writing the rest into the settings; main then applies the simulation switches and reloads the window, which starts from the settings as it does at launch. Saving snapshots whichever theme is active, so a project opened and saved again keeps its own copy.
+
 ## Platform notes
 
 - **macOS:** unsigned builds need right-click → Open the first time. Signing and notarization need an Apple Developer ID.

@@ -5,17 +5,18 @@
  *   cameras     -> go2rtc -> window (WebRTC)
  */
 'use strict';
-const { app, BrowserWindow, ipcMain, dialog, protocol, shell } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, protocol, shell, Menu } = require('electron');
 const path = require('node:path');
 const fs = require('node:fs/promises');
 const { SerialRoles } = require('./serial');
 const { Relay } = require('./relay');
 const { Store } = require('./store');
 const { Themes } = require('./themes');
+const { Projects, EXT: PROJECT_EXT } = require('./project');
 
 const { CameraEngine, IMAGES, VIDEOS } = require('./cameras');
 const PARTS = ['timer', 'events'];
-let win = null, serial = null, relay = null, store = null, cameras = null, themes = null;
+let win = null, serial = null, relay = null, store = null, cameras = null, themes = null, projects = null;
 // The timer and the meet data can be simulated on their own; cameras each carry their own switch.
 const simulated = { timer: false, events: false };
 // Nothing is simulated unless it was last time; LANECAST_SIMULATE=1 (the smoke test) turns everything on.
@@ -78,10 +79,73 @@ app.whenReady().then(async () => {
         onChange: list => store.set('cameras', list), onStatus: state => send('cameras:status', state)
     });
     cameras.start();
+    projects = new Projects({ store, cameras, themes, workDir: path.join(app.getPath('userData'), 'projects'), version: app.getVersion() });
+    // A project opened last time keeps its theme copy available.
+    const lastProject = store.get('projectPath', null);
+    if (lastProject && fs.existsSync(lastProject) && store.get('theme') === 'p-project') { try { await projects.open(lastProject); } catch (e) { store.set('projectPath', null); } }
+    Menu.setApplicationMenu(buildMenu());
     createWindow();
     app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
 });
 app.on('window-all-closed', () => app.quit());
+
+// ---- projects: save, open, new, from the window or the File menu ------------------------
+const filters = [{ name: 'Lanecast project', extensions: [PROJECT_EXT.slice(1)] }];
+async function projectSaveAs() {
+    const current = projects.info();
+    const { canceled, filePath } = await dialog.showSaveDialog(win, { title: 'Save the project', defaultPath: current.path || path.join(app.getPath('documents'), 'Meet' + PROJECT_EXT), filters });
+    if (canceled || !filePath) return current;
+    return projectSaveTo(filePath);
+}
+async function projectSaveTo(file) { const info = await projects.save(file); send('project:changed', info); return info; }
+async function projectSave() { const current = projects.info(); return current.path ? projectSaveTo(current.path) : projectSaveAs(); }
+async function projectOpenDialog() {
+    const { canceled, filePaths } = await dialog.showOpenDialog(win, { title: 'Open a project', properties: ['openFile'], filters });
+    if (canceled || !filePaths.length) return projects.info();
+    return projectOpenPath(filePaths[0]);
+}
+/** Open a project file and start the window again from it. */
+async function projectOpenPath(file) {
+    const info = await projects.open(file);
+    for (const part of PARTS) await setSimulated(part, !!info.simulate[part]);
+    if (win) win.webContents.reload();
+    return info;
+}
+async function projectNew() {
+    if (win) {
+        const { response } = await dialog.showMessageBox(win, { type: 'question', buttons: ['New project', 'Cancel'], defaultId: 0, cancelId: 1, message: 'Start a new project?', detail: 'Cameras, start lists and theme settings are cleared. Save the current project first if you want to keep it.' });
+        if (response !== 0) return projects.info();
+    }
+    const info = await projects.fresh();
+    for (const part of PARTS) await setSimulated(part, false);
+    if (win) win.webContents.reload();
+    return info;
+}
+function buildMenu() {
+    const isMac = process.platform === 'darwin';
+    return Menu.buildFromTemplate([
+        ...(isMac ? [{ role: 'appMenu' }] : []),
+        { label: 'File', submenu: [
+            { label: 'New Project', accelerator: 'CmdOrCtrl+N', click: () => projectNew().catch(e => dialog.showErrorBox('New project', e.message)) },
+            { label: 'Open Project…', accelerator: 'CmdOrCtrl+O', click: () => projectOpenDialog().catch(e => dialog.showErrorBox('Open project', e.message)) },
+            { type: 'separator' },
+            { label: 'Save Project', accelerator: 'CmdOrCtrl+S', click: () => projectSave().catch(e => dialog.showErrorBox('Save project', e.message)) },
+            { label: 'Save Project As…', accelerator: 'Shift+CmdOrCtrl+S', click: () => projectSaveAs().catch(e => dialog.showErrorBox('Save project', e.message)) },
+            { type: 'separator' },
+            isMac ? { role: 'close' } : { role: 'quit' }
+        ] },
+        { role: 'editMenu' },
+        { label: 'View', submenu: [{ role: 'reload' }, { role: 'toggleDevTools' }, { type: 'separator' }, { role: 'togglefullscreen' }] },
+        { role: 'windowMenu' }
+    ]);
+}
+ipcMain.handle('project:info', () => projects.info());
+ipcMain.handle('project:new', () => projectNew());
+ipcMain.handle('project:open', () => projectOpenDialog());
+ipcMain.handle('project:openPath', (event, file) => projectOpenPath(String(file)));
+ipcMain.handle('project:save', () => projectSave());
+ipcMain.handle('project:saveAs', () => projectSaveAs());
+ipcMain.handle('project:saveTo', (event, file) => projectSaveTo(String(file)));
 app.on('before-quit', () => { if (serial) serial.closeAll(); if (relay) relay.stop(); if (cameras) cameras.stop(); if (store) store.flush(); });
 // However the process ends, go2rtc must not outlive it.
 process.on('exit', () => { if (cameras) cameras.stop(); });

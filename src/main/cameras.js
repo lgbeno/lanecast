@@ -43,7 +43,7 @@ class CameraEngine {
         this.config = path.join(dataDir, 'go2rtc.yaml');
         this.port = port; this.webrtcPort = webrtcPort; this.rtspPort = rtspPort; this.api = `http://127.0.0.1:${port}`;
         this.cameras = cameras.filter(c => c && typeof c.id === 'string').map(c => ({
-            id: c.id, name: String(c.name || ''), url: typeof c.url === 'string' ? c.url : '', simulate: !!c.simulate,
+            id: c.id, name: String(c.name || ''), url: typeof c.url === 'string' ? c.url : '', simulate: !!c.simulate, deviceLabel: String(c.deviceLabel || ''),
             media: c.media && typeof c.media.path === 'string' ? this._media(c.media.path) : null
         }));
         this.onChange = onChange; this.onStatus = onStatus;
@@ -51,7 +51,7 @@ class CameraEngine {
     }
     state() { return { running: this.running, error: this.error, api: this.api, version: this.version, installed: !!this.binary, ffmpeg: !!this.ffmpeg, log: this.log.slice(-5) }; }
     _changed() { this.onStatus(this.state()); }
-    _save() { this.onChange(this.cameras.map(c => ({ id: c.id, name: c.name, url: c.url, simulate: c.simulate, media: c.media ? { path: c.media.path } : null }))); }
+    _save() { this.onChange(this.cameras.map(c => ({ id: c.id, name: c.name, url: c.url, simulate: c.simulate, deviceLabel: c.deviceLabel || '', media: c.media ? { path: c.media.path } : null }))); }
     _media(file) {
         const ext = path.extname(file).slice(1).toLowerCase();
         const kind = IMAGES.includes(ext) ? 'image' : VIDEOS.includes(ext) ? 'video' : null;
@@ -107,7 +107,7 @@ class CameraEngine {
             else await fetch(`${this.api}/api/streams?src=${encodeURIComponent(c.id)}`, { method: 'DELETE' });
         } catch (e) { /* listed at next start */ }
     }
-    describe(c) { return { id: c.id, name: c.name, url: c.url, simulate: c.simulate, local: isDevice(c), media: c.media ? { name: c.media.name, kind: c.media.kind, version: c.media.version } : null }; }
+    describe(c) { return { id: c.id, name: c.name, url: c.url, simulate: c.simulate, local: isDevice(c), deviceLabel: c.deviceLabel || '', media: c.media ? { name: c.media.name, kind: c.media.kind, version: c.media.version } : null }; }
     /** Cameras with what go2rtc knows about each: whether a source is connected and how many viewers it has. */
     async list() {
         let streams = {};
@@ -116,13 +116,13 @@ class CameraEngine {
     }
     find(id) { const c = this.cameras.find(x => x.id === id); if (!c) throw new Error('No such camera'); return c; }
     /** A new camera: a network address, a device on this computer, or nothing yet (simulated only). */
-    async add({ name, url, simulate }) {
+    async add({ name, url, simulate, deviceLabel }) {
         name = String(name || '').trim(); url = String(url || '').trim();
         if (url && !validUrl(url)) throw new Error('The address should start with rtsp:// (or another scheme go2rtc understands)');
         if (!url && !simulate) throw new Error('Enter the camera’s address, or add it as simulated');
         if (url && this.cameras.some(c => c.url === url)) throw new Error('That camera is already in the list');
         const id = 'cam-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
-        const camera = { id, name: name || `Camera ${this.cameras.length + 1}`, url, simulate: !!simulate, media: null };
+        const camera = { id, name: name || `Camera ${this.cameras.length + 1}`, url, simulate: !!simulate, deviceLabel: isDevice({ url }) ? String(deviceLabel || name || '') : '', media: null };
         this.cameras.push(camera); this._save(); this.writeConfig();
         await this._tell('PUT', camera);
         if (this.running && isNetwork(camera)) {
@@ -142,6 +142,7 @@ class CameraEngine {
             c.url = url;
         }
         if (patch.simulate !== undefined) c.simulate = !!patch.simulate;
+        if (patch.deviceLabel !== undefined) c.deviceLabel = String(patch.deviceLabel);
         if (!c.url && !c.simulate) c.simulate = true;                      // nothing to show otherwise
         this._save(); this.writeConfig();
         if (before.url !== c.url) { await this._tell('DELETE', before); await this._tell('PUT', c); }
@@ -162,6 +163,17 @@ class CameraEngine {
         return this.describe(c);
     }
     async mediaBytes(id) { const c = this.find(id); return c.media ? { bytes: new Uint8Array(await fsp.readFile(c.media.path)), mime: c.media.mime, version: c.media.version } : null; }
+    /** The whole list at once, as a project brings it; go2rtc is told about the network ones that changed. */
+    async replaceAll(list) {
+        const before = this.cameras;
+        this.cameras = (Array.isArray(list) ? list : []).filter(c => c && typeof c.id === 'string').map(c => ({
+            id: c.id, name: String(c.name || ''), url: typeof c.url === 'string' ? c.url : '', simulate: !!c.simulate, deviceLabel: String(c.deviceLabel || ''),
+            media: c.media && typeof c.media.path === 'string' ? this._media(c.media.path) : null
+        }));
+        this._save(); this.writeConfig();
+        for (const old of before) if (!this.cameras.some(n => n.id === old.id && n.url === old.url)) await this._tell('DELETE', old);
+        for (const now of this.cameras) if (!before.some(o => o.id === now.id && o.url === now.url)) await this._tell('PUT', now);
+    }
     async remove(id) {
         const index = this.cameras.findIndex(c => c.id === id);
         if (index < 0) return;

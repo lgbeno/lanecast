@@ -16,10 +16,21 @@ const MIME = { html: 'text/html; charset=utf-8', js: 'text/javascript; charset=u
 const slug = name => String(name || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40);
 
 class Themes {
-    constructor({ userDir }) { this.userDir = userDir; this.themes = new Map(); }
-    /** Every theme found, built-in first: [{ id, name, version, author, description, source, folder, overlay, control, url }]. */
+    constructor({ userDir }) { this.userDir = userDir; this.themes = new Map(); this.projectFolder = null; }
+    /** The open project's copy of its theme, shown as its own entry while a project is open. */
+    setProject(folder) { this.projectFolder = folder; }
+    clearProject() { this.projectFolder = null; }
+    /** Every theme found, the project's first, then built-in, then the user's: [{ id, name, version, author, description, source, folder, overlay, control, url }]. */
     async list() {
         this.themes = new Map();
+        if (this.projectFolder) {
+            try {
+                const m = JSON.parse(await fsp.readFile(path.join(this.projectFolder, 'theme.json'), 'utf8'));
+                const control = !m.control ? null : typeof m.control === 'string' ? { page: m.control, width: 340, height: 0 } : { page: String(m.control.page || 'control.html'), width: Number(m.control.width) || 340, height: Number(m.control.height) || 0 };
+                this.themes.set('p-project', { id: 'p-project', name: `${m.name || 'Theme'} (project)`, version: String(m.version || ''), author: String(m.author || ''), description: `This project's own copy of ${m.name || 'its theme'}, as it was when the project was saved. ${m.description || ''}`.trim(),
+                    source: 'project', folder: this.projectFolder, overlay: String(m.overlay || 'overlay.html'), control, url: 'theme://p-project/' });
+            } catch (e) { /* a project without a usable theme */ }
+        }
         for (const [source, dir] of [['built-in', BUILTIN], ['mine', this.userDir]]) {
             let entries = [];
             try { entries = await fsp.readdir(dir, { withFileTypes: true }); } catch (e) { continue; }

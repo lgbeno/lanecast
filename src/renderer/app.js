@@ -184,9 +184,15 @@
             if (this.camera.url.startsWith('device:')) {
                 // A camera on this computer: a webcam, a capture card, an iPhone. Opened by device id, 1080p if it can.
                 try {
-                    const deviceId = this.camera.url.slice(7);
                     const access = api.cameras.access ? await api.cameras.access() : 'granted';     // macOS asks the person the first time
                     if (access !== 'granted') throw Object.assign(new Error('camera access was refused'), { name: 'NotAllowedError' });
+                    // An iPhone (and some adapters) comes back with a new device id each time: find it by name and remember the new id.
+                    let deviceId = this.camera.url.slice(7);
+                    const known = (await navigator.mediaDevices.enumerateDevices()).filter(d => d.kind === 'videoinput');
+                    if (!known.some(d => d.deviceId === deviceId) && this.camera.deviceLabel) {
+                        const again = known.find(d => d.label === this.camera.deviceLabel);
+                        if (again) { deviceId = again.deviceId; this.camera = { ...this.camera, url: 'device:' + deviceId }; api.cameras.update(this.id, { url: 'device:' + deviceId }).catch(() => {}); }
+                    }
                     this.stream = await navigator.mediaDevices.getUserMedia({ video: { deviceId: { exact: deviceId }, width: { ideal: 1920 }, height: { ideal: 1080 }, frameRate: { ideal: 30 } }, audio: false });
                     if (this.stopped || this.camera.simulate) { this.stream.getTracks().forEach(t => t.stop()); return; }
                     this.video.srcObject = this.stream;
@@ -310,9 +316,9 @@
             const row = document.createElement('div'); row.className = 'device';
             const label = document.createElement('span'); label.textContent = d.label || `Camera ${i + 1}`;
             const add = document.createElement('button'); add.type = 'button';
-            const url = 'device:' + d.deviceId, have = added.has(url);
+            const url = 'device:' + d.deviceId, have = added.has(url) || (!!d.label && cameraList.some(c => c.deviceLabel === d.label));
             add.textContent = have ? 'Added' : 'Add'; add.disabled = have || !d.deviceId;
-            add.onclick = async () => { add.disabled = true; try { await api.cameras.add({ name: d.label || `Camera ${i + 1}`, url }); await refreshCameras(); await refreshDevices(); } catch (e) { showError(e); add.disabled = false; } };
+            add.onclick = async () => { add.disabled = true; try { await api.cameras.add({ name: d.label || `Camera ${i + 1}`, url, deviceLabel: d.label }); await refreshCameras(); await refreshDevices(); } catch (e) { showError(e); add.disabled = false; } };
             row.append(label, add); return row;
         }));
         if (!devices.length) { const none = document.createElement('p'); none.className = 'small'; none.textContent = devicesAsked ? 'No cameras found on this computer.' : 'Press Find cameras to look.'; $('deviceList').replaceChildren(none); }
@@ -320,7 +326,8 @@
         else if (!$('deviceNote').textContent.startsWith('Camera access')) $('deviceNote').textContent = '';
     }
     $('findDevices').onclick = () => refreshDevices(true);
-    if (navigator.mediaDevices) navigator.mediaDevices.addEventListener('devicechange', () => refreshDevices(false));
+    // A camera plugged back in (or an iPhone brought back) is tried again at once, not after the retry timer.
+    if (navigator.mediaDevices) navigator.mediaDevices.addEventListener('devicechange', () => { refreshDevices(false); for (const p of players.values()) if (p.camera.url.startsWith('device:') && !p.camera.simulate && !p.live) { clearTimeout(p.timer); p.timer = setTimeout(() => p.start(), 300); } });
     function renderCameras() {
         $('engineStatus').textContent = !engine.installed ? 'The camera engine (go2rtc) is not in this build.' : engine.error ? `Camera engine · ${engine.error}`
             : !engine.running ? 'Starting the camera engine…' : `Camera engine running${engine.version ? ' · go2rtc ' + engine.version : ''}${engine.ffmpeg ? '' : ' · ffmpeg not found, so network cameras must send H.264'}`;
@@ -651,6 +658,24 @@
         window.addEventListener('mousemove', move); window.addEventListener('mouseup', up);
     });
 
+    // ---- project -------------------------------------------------------------------------
+    let project = { path: null, name: 'Untitled project' };
+    function renderProject() {
+        $('projectButton').textContent = project.name; $('projectName').textContent = project.name;
+        $('projectPath').textContent = project.path || 'Not saved yet.';
+    }
+    const projectAction = (what, fn) => async () => {
+        hideError(); $('projectNote').textContent = what + '…';
+        try { project = await fn(); renderProject(); $('projectNote').textContent = project.path ? `${what}: ${project.path}` : ''; }
+        catch (e) { $('projectNote').textContent = e.message.replace(/^Error invoking remote method '[^']+': (Error: )?/, ''); }
+    };
+    $('projectButton').onclick = () => { renderProject(); $('projectNote').textContent = ''; $('projectDialog').showModal(); };
+    $('projectSave').onclick = projectAction('Saved', () => api.project.save());
+    $('projectSaveAs').onclick = projectAction('Saved', () => api.project.saveAs());
+    $('projectOpen').onclick = projectAction('Opened', () => api.project.open());
+    $('projectNew').onclick = projectAction('New project', () => api.project.new());
+    api.project.onChange(info => { project = info; renderProject(); });
+
     // ---- tabs ----------------------------------------------------------------------------
     function showTab(name, remember = true) {
         if (!TABS.includes(name)) name = TABS[0];
@@ -721,6 +746,7 @@
         const info = await api.info();
         document.title = `Lanecast ${info.version}`;
         remembered = (await api.store.get('ports')) || {};
+        try { project = await api.project.info(); } catch (e) { /* design mode */ } renderProject();
         programCamera = (await api.store.get('programCamera')) || null;
         const savedDrawer = await api.store.get('drawer');
         if (savedDrawer) { drawer.open = savedDrawer.open !== false; if (savedDrawer.width) { drawer.sized = true; $('drawer').style.width = savedDrawer.width + 'px'; } }
