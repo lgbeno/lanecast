@@ -49,6 +49,7 @@ contextBridge.exposeInMainWorld('lanecast', {
         save: () => invoke('project:save'),
         saveAs: () => invoke('project:saveAs'),
         saveTo: file => invoke('project:saveTo', file),
+        rename: name => invoke('project:rename', name),
         onChange: callback => on('project:changed', callback)
     },
     themes: {

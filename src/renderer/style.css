@@ -137,6 +137,7 @@ input.edit{width:100%;min-width:120px;background:#0c1620;color:var(--text);borde
 .tile figcaption{flex-wrap:wrap}
 .tile .switch{margin-left:auto;font-size:12px}
 .tile .gear{padding:6px 10px}
+.tile .reconnect{padding:6px 10px;border-color:var(--accent);color:var(--accent);background:transparent}
 .tile .sim-badge{margin-left:2px}
 #cameraDialog{max-width:560px;width:100%}
 .cd-switch{margin:14px 0}.cd-foot{margin-top:22px;justify-content:space-between}
