@@ -38,11 +38,15 @@ app.on('browser-window-created', (event, win) => {
         // Everything simulated at start: the pretend console connects by itself, no port controls show.
         const start = await js(`({ timer: ${text('timerStatus')}, timerControls: document.getElementById('timerPort').parentElement.hidden, simPanel: !document.getElementById('simConsole').hidden && document.getElementById('timer').querySelector('.sim-panel') === null,
             meet: ${text('meetStatus')}, fetch: !document.getElementById('fetchSim').hidden && document.getElementById('loadFiles').hidden && document.getElementById('saveFiles').hidden, camSim: !document.getElementById('camSim').hidden, camAdd: document.getElementById('camAdd').hidden,
-            badges: ${badges}, shown: document.querySelector('[role=tabpanel]:not([hidden])').id, error: document.getElementById('error').hidden ? '' : ${text('error')} })`);
+            badges: ${badges}, shown: document.querySelector('[role=tabpanel]:not([hidden])').id, error: document.getElementById('error').hidden ? '' : ${text('error')},
+            label: ${text('camerasLabel')}, deck: document.getElementById('stage').previousElementSibling.className, deckHas: [...document.querySelector('.deck').children].map(c => c.id || c.className.split(' ').pop()).join('+'),
+            fits: document.getElementById('stage').getBoundingClientRect().bottom <= window.innerHeight && document.documentElement.scrollHeight <= window.innerHeight + 1, banner: !!document.getElementById('banner'), follow: !!document.getElementById('follow') })`);
+        check(start.label === 'Camera' && start.deck === 'deck' && start.deckHas === 'program-box+simConsole', `Camera tab singular; Go Live box above the stage beside Simulation control: ${start.deckHas}`);
+        check(start.fits && !start.banner && !start.follow, `the Stream tab fits the window with no scrolling, no banner, no Show latest`);
         console.log(JSON.stringify(start, null, 1));
         check(start.shown === 'stream', 'the Stream tab is shown first: ' + start.shown);
         check(start.badges === 'timer,events,cameras', 'the settings file is honoured: Sim badges on Timer, Events and Cameras, none on Stream: ' + start.badges);
-        check(/^Simulated · the pretend console is connected/.test(start.timer) && start.timerControls && start.simPanel, 'timer: pretend console connected, port controls gone, console controls on the Stream tab');
+        check(/^Simulated · the pretend console is connected · its controls are on the Stream tab/.test(start.timer) && start.timerControls && start.simPanel, 'timer: pretend console connected, port controls gone, a note that the controls are on the Stream tab');
         check(/^Simulated/.test(start.meet) && start.fetch, 'events: no port, Fetch simulated events in place of Load and Save');
         check(start.camSim && start.camAdd, 'cameras: the simulated camera card replaces Add a camera');
         check(!start.error, 'no error shown: ' + start.error);
@@ -57,8 +61,16 @@ app.on('browser-window-created', (event, win) => {
         const queued = await js(`({ event: ${text('event')}, summary: ${text('simSummary')}, running: document.getElementById('simRun').getAttribute('aria-pressed') })`);
         check(queued.event === '2 / 1' && /^Queued · event 2 heat 1$/.test(queued.summary) && queued.running === 'false', `event 2 heat 1 queued: ${queued.summary}`);
         await click('simRun', 9500);                                                   // through the 8 s lineup into the race
-        const running = await js(`({ running: document.getElementById('simRun').getAttribute('aria-pressed'), summary: ${text('simSummary')}, state: ${text('raceState')}, event: ${text('event')}, above: document.getElementById('simConsole').nextElementSibling.id })`);
-        check(running.running === 'true' && /^Running · event 2 heat 1 of 12 loaded events/.test(running.summary) && running.state === 'RUNNING' && running.above === 'stage', `Run from the queued heat, racing: ${running.summary} · ${running.state}`);
+        const running = await js(`({ running: document.getElementById('simRun').getAttribute('aria-pressed'), summary: ${text('simSummary')}, state: ${text('raceState')}, event: ${text('event')} })`);
+        check(running.running === 'true' && /^Running · event 2 heat 1 of 12 loaded events/.test(running.summary) && running.state === 'RUNNING', `Run from the queued heat, racing: ${running.summary} · ${running.state}`);
+        // Events: click a lane in the start list and rename the swimmer.
+        await js(`document.getElementById('tab-events').click(); document.getElementById('viewEventNo').value = 1; document.getElementById('viewEventNo').dispatchEvent(new Event('change'))`); await wait(400);
+        await js(`document.querySelector('#startList tr[data-lane]').click()`); await wait(200);
+        const edited = await js(`(() => { const name = document.querySelector('#startList input.edit'); if (!name) return { name: null }; const lane = Number(name.closest('tr').dataset.lane); name.value = 'Renamed, Pat'; name.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter' })); return { lane }; })()`);
+        await wait(300);
+        const after = await js(`({ cell: document.querySelectorAll('#startList tr')[${edited.lane ?? 0}].children[1].textContent, inputs: document.querySelectorAll('#startList input').length })`);
+        check(edited.lane !== undefined && after.cell === 'Pat Renamed' && after.inputs === 0, `a start-list lane renamed in place: ${after.cell}`);
+        await js(`document.getElementById('tab-stream').click()`); await wait(300);
         await wait(4000);
         const r = await js(`({ timer: ${text('timerStatus')}, clock: ${text('clock')}, event: ${text('event')}, relay: ${text('relayStatus')}, clients: ${text('clients')}, packets: ${text('packets')}, ready: ${dots} })`);
         check(/^\d:\d\d\.\d$/.test(r.clock) && r.ready.timer, 'clock shows a time and the Timer dot is green: ' + r.clock);
@@ -70,12 +82,12 @@ app.on('browser-window-created', (event, win) => {
         const cams = await js(`({ tiles: document.querySelectorAll('.tile').length, status: [...document.querySelectorAll('.tile .small')].map(s => s.textContent), media: ${text('mediaName')}, engine: ${text('engineStatus')}, ready: ${dots},
             program: document.getElementById('programVideo').videoWidth, note: document.getElementById('stageNote').hidden, bug: !document.getElementById('bug').hidden, pstatus: ${text('programStatus')} })`);
         check(cams.tiles === 1 && /^Live · 1280×720/.test(cams.status[0]) && cams.media === 'Photo: icon.png', `the simulated camera shows the remembered photo, live: ${cams.status.join(' / ')} · ${cams.media}`);
+        check(/^Camera engine running/.test(cams.engine), 'camera engine running: ' + cams.engine);
         const pixel = await js(`(() => { const v = document.getElementById('programVideo'), c = document.createElement('canvas'); c.width = 64; c.height = 36; const x = c.getContext('2d'); x.drawImage(v, 0, 0, 64, 36); const d = x.getImageData(0, 0, 64, 36).data; let lit = 0; for (let i = 0; i < d.length; i += 4) if (d[i] + d[i + 1] + d[i + 2] > 120) lit++; return lit; })()`);
         check(pixel > 200, `the photo is actually drawn (lit pixels in the program: ${pixel})`);
-        await click('clearMedia', 1500);
-        const pool = await js(`({ media: ${text('mediaName')}, status: document.querySelector('.tile .small').textContent })`);
-        check(/drawn pool/.test(pool.media) && /^Live/.test(pool.status), `back to the drawn pool: ${pool.media} · ${pool.status}`);
-        check(/^Camera engine running/.test(cams.engine), 'camera engine running: ' + cams.engine);
+        await click('clearMedia', 2500);
+        const none = await js(`({ media: ${text('mediaName')}, status: document.querySelector('.tile .small').textContent, ready: ${dots} })`);
+        check(none.media === 'No photo or video chosen.' && none.status === 'No photo or video chosen' && !none.ready.cameras, `photo removed: nothing stands in, the dot goes quiet: ${none.media} · ${none.status}`);
         check(cams.ready.cameras && cams.ready.stream && cams.program > 0 && cams.note && cams.bug && /^Idle · program ready/.test(cams.pstatus), `program shows the camera under the lower third: ${cams.program}px, ${cams.pstatus}`);
 
         if (shot) {

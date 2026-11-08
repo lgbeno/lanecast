@@ -138,7 +138,7 @@
     let engine = { running: false, error: '', api: '', version: '', installed: false, ffmpeg: false };
     let cameraList = [];                 // [{ id, name, url, producers, consumers }]
     const players = new Map();           // id -> Player
-    /** The simulated camera: a photo or video from the camera's view, or a drawn pool, as a video stream. */
+    /** The simulated camera: a photo or video from the camera's view, as a video stream. */
     class SimCamera {
         constructor() {
             this.canvas = document.createElement('canvas'); this.canvas.width = 1280; this.canvas.height = 720;
@@ -169,21 +169,11 @@
                 ctx.drawImage(el, (W - dw) / 2, (H - dh) / 2, dw, dh);
                 return;
             }
-            // A pool from the stands: water, lane ropes, a deck.
-            const sky = ctx.createLinearGradient(0, 0, 0, H);
-            sky.addColorStop(0, '#15314d'); sky.addColorStop(0.42, '#1d6fa8'); sky.addColorStop(1, '#0d4f86');
-            ctx.fillStyle = sky; ctx.fillRect(0, 0, W, H);
-            ctx.fillStyle = '#c9c3b4'; ctx.fillRect(0, 0, W, H * 0.3);
-            ctx.fillStyle = '#8f8a7c'; ctx.fillRect(0, H * 0.28, W, H * 0.02);
-            for (let i = 0; i <= 8; i++) {
-                const y = H * 0.33 + i * (H * 0.62 / 8), x0 = W * 0.08 + i * 4, x1 = W * 0.92 - i * 4;
-                ctx.strokeStyle = i % 2 ? '#e8e2d0' : '#d85a4a'; ctx.lineWidth = 3; ctx.setLineDash([14, 10]);
-                ctx.beginPath(); ctx.moveTo(x0, y); ctx.lineTo(x1, y); ctx.stroke();
-            }
-            ctx.setLineDash([]);
-            ctx.fillStyle = 'rgba(255,255,255,.75)'; ctx.font = '600 26px system-ui'; ctx.textAlign = 'right';
-            ctx.fillText('simulated camera · drawn pool', W - 36, 50);
+            // Nothing chosen yet: black. The stage says what to do.
+            ctx.fillStyle = '#060a0f'; ctx.fillRect(0, 0, W, H);
         }
+        /** A photo or video is loaded and has a size: the stream shows something real. */
+        get hasPicture() { const el = this.element; return !!(el && (el.videoWidth || el.naturalWidth)); }
     }
     let simCamera = null;
     /** One camera's picture, pulled from the engine over WebRTC (WHEP). Reconnects by itself. */
@@ -235,7 +225,7 @@
     async function refreshCameras() {
         let real = [];
         try { real = await api.cameras.list(); } catch (e) { real = []; }
-        cameraList = (sim.cameras ? [{ id: SIM_CAMERA, name: 'Simulated camera', url: sim.media ? sim.media.name : 'drawn pool' }] : []).concat(real);
+        cameraList = (sim.cameras ? [{ id: SIM_CAMERA, name: 'Simulated camera', url: sim.media ? sim.media.name : '' }] : []).concat(real);
         const list = $('cameraList'), have = new Set(cameraList.map(c => c.id));
         for (const figure of [...list.children]) if (!have.has(figure.dataset.id)) { players.get(figure.dataset.id)?.stop(); players.delete(figure.dataset.id); figure.remove(); }
         for (const camera of cameraList) if (!players.has(camera.id) && (camera.id === SIM_CAMERA || engine.running)) list.append(tileFor(camera));
@@ -259,16 +249,16 @@
             : !engine.running ? 'Starting the camera engine…' : `Camera engine running${engine.version ? ' · go2rtc ' + engine.version : ''}${engine.ffmpeg ? '' : ' · ffmpeg not found, so cameras must send H.264'}`;
         $('noCameras').hidden = cameraList.length > 0;
         $('camSim').hidden = !sim.cameras; $('camAdd').hidden = sim.cameras;
-        $('mediaName').textContent = sim.media ? `${sim.media.kind === 'video' ? 'Video' : 'Photo'}: ${sim.media.name}` : 'Showing the drawn pool.';
+        $('mediaName').textContent = sim.media ? `${sim.media.kind === 'video' ? 'Video' : 'Photo'}: ${sim.media.name}` : 'No photo or video chosen.';
         $('clearMedia').disabled = !sim.media;
         if (simCamera) simCamera.setMedia(sim.cameras ? sim.media : null);
         let live = 0;
         for (const figure of $('cameraList').children) {
             const player = players.get(figure.dataset.id), status = figure.querySelector('.small');
             if (!player) continue;
-            const v = player.video;
-            if (player.live) { live++; status.textContent = `Live · ${v.videoWidth}×${v.videoHeight}`; status.className = 'small live'; }
-            else { status.className = 'small'; status.textContent = performance.now() - player.startedAt < 8000 ? 'Connecting…' : 'No video yet · check the address, and that the camera sends H.264'; }
+            const v = player.video, isSim = player.id === SIM_CAMERA;
+            if (player.live && (!isSim || simCamera?.hasPicture)) { live++; status.textContent = `Live · ${v.videoWidth}×${v.videoHeight}`; status.className = 'small live'; }
+            else { status.className = 'small'; status.textContent = isSim ? (sim.media ? 'Loading…' : 'No photo or video chosen') : performance.now() - player.startedAt < 8000 ? 'Connecting…' : 'No video yet · check the address, and that the camera sends H.264'; }
         }
         return live > 0;
     }
@@ -290,8 +280,9 @@
         const id = programCameraId(), player = id ? players.get(id) : null, video = $('programVideo');
         const source = player?.video.srcObject || null;
         if (video.srcObject !== source) video.srcObject = source;
-        const picture = !!player?.live;
-        $('stageNote').hidden = picture; $('stageNote').textContent = cameraList.length ? 'Waiting for the camera…' : 'No camera. Add one on the Cameras tab.';
+        const picture = !!player?.live && (id !== SIM_CAMERA || !!simCamera?.hasPicture);
+        $('stageNote').hidden = picture;
+        $('stageNote').textContent = !cameraList.length ? 'No camera. Add one on the Camera tab.' : id === SIM_CAMERA && !sim.media ? 'Simulated camera · choose a photo or video on the Camera tab' : 'Waiting for the camera…';
         const showBug = connected('timer') && latest.event;
         $('bug').hidden = !showBug;
         if (showBug) {
@@ -334,6 +325,7 @@
         }
         $('liveBadge').hidden = !live;
         for (const toggle of document.querySelectorAll('.simToggle')) toggle.checked = !!sim[toggle.dataset.part];
+        $('camerasLabel').textContent = cameraList.length > 1 ? 'Cameras' : 'Camera';
         // Timer: only what the console sends, and, when simulated, the console's own controls.
         $('event').textContent = `${latest.event ?? '—'} / ${latest.heat ?? '—'}`;
         $('clock').textContent = latest.clock || '—:—.—';
@@ -366,10 +358,9 @@
             $('viewTitle').textContent = !selected.event ? (rosters.heats ? 'Step to an event, or type its number' : 'No event data')
                 : !entry ? `Nothing stored for event ${selected.event}`
                 : heat ? entry.title || `Event ${selected.event}` : `${entry.title || `Event ${selected.event}`} · heat ${selected.heat} not received`;
-            $('startList').replaceChildren(...(heat ? heat.map((a, i) => row([i + 1, GENSER.displayName(a.name) || '—', a.team || '—'])) : []));
+            if (!editing) $('startList').replaceChildren(...(heat ? heat.map((a, i) => { const tr = row([i + 1, GENSER.displayName(a.name) || '—', a.team || '—']); tr.dataset.lane = i; tr.title = 'Click to edit'; return tr; }) : []));
             $('storedEvents').textContent = rosters.events.size ? `${rosters.events.size} stored` : '';
             $('heatCount').textContent = entry ? `of ${entry.heats.length}` : '';
-            $('follow').setAttribute('aria-pressed', String(following));
         }
         // Overlay feed, in the Configure dialog.
         const address = `ws://${relay.hosts[0] || 'localhost'}:${relay.port}/`;
@@ -388,7 +379,7 @@
             $(role + 'Port').disabled = link.state !== 'closed';
         }
         const timer = links.timer, meet = links.meet;
-        $('timerStatus').textContent = sim.timer ? (connected('timer') ? 'Simulated · the pretend console is connected' : 'Simulated · connecting the pretend console…')
+        $('timerStatus').textContent = sim.timer ? (connected('timer') ? 'Simulated · the pretend console is connected · its controls are on the Stream tab' : 'Simulated · connecting the pretend console…')
             : timer.state === 'connecting' ? 'Connecting…' : timer.state === 'retrying' || timer.state === 'error' ? timer.message
             : timer.state !== 'open' ? 'Not connected.'
             : !latest.bytes ? 'Connected · no data yet'
@@ -451,12 +442,8 @@
         }
         if (changed('events') && sim.events && connected('meet')) await api.serial.close('meet');
         if (changed('events') && !sim.events && !first && remembered.meet && ports.meet.some(p => p.path === remembered.meet)) connect('meet', remembered.meet);
-        const parts = [sim.timer && 'the timer', sim.events && 'Meet Manager', sim.cameras && 'a camera'].filter(Boolean);
-        const list = parts.length > 1 ? parts.slice(0, -1).join(', ') + ' and ' + parts.at(-1) : parts[0] || '';
-        $('banner').hidden = !parts.length;
-        $('banner').textContent = (api.designMode ? 'Design mode in a browser, nothing real. ' : '') + 'Simulating ' + list + '. Nothing simulated comes from the pool.';
         if (changed('cameras') || first) await refreshCameras();
-        render();
+        render(); fitStage();
     }
     for (const toggle of document.querySelectorAll('.simToggle')) toggle.addEventListener('change', async e => {
         hideError();
@@ -480,13 +467,24 @@
     $('chooseMedia').onclick = async () => { hideError(); try { await api.sim.chooseMedia(); } catch (e) { showError(e); } };
     $('clearMedia').onclick = async () => { hideError(); try { await api.sim.clearMedia(); } catch (e) { showError(e); } };
 
+    // ---- fit ------------------------------------------------------------------------------
+    /** The stage fills what is left under the deck, 16:9, so the Stream tab never scrolls. */
+    function fitStage() {
+        const stage = $('stage'); if ($('stream').hidden) return;
+        const top = stage.getBoundingClientRect().top, availableH = Math.max(180, window.innerHeight - top - 20), availableW = stage.parentElement.clientWidth;
+        const w = Math.min(availableW, availableH * 16 / 9);
+        stage.style.width = w + 'px'; stage.style.height = (w * 9 / 16) + 'px';
+    }
+    window.addEventListener('resize', fitStage);
+    $('simConsole').addEventListener('toggle', () => requestAnimationFrame(fitStage));
+
     // ---- tabs ----------------------------------------------------------------------------
     function showTab(name, remember = true) {
         if (!TABS.includes(name)) name = TABS[0];
         tab = name;
         for (const t of TABS) { $(t).hidden = t !== name; $('tab-' + t).setAttribute('aria-selected', String(t === name)); }
         if (remember) api.store.set('tab', name).catch(() => {});
-        render();
+        render(); fitStage(); requestAnimationFrame(fitStage);
     }
     for (const t of TABS) $('tab-' + t).onclick = () => showTab(t);
     document.querySelector('.tabs').addEventListener('keydown', e => {
@@ -508,20 +506,40 @@
     api.cameras.onStatus(state => { const wasRunning = engine.running; engine = state; if (engine.running && !wasRunning) refreshCameras(); else render(); });
     $('loadFiles').onclick = loadStartLists;
     $('saveFiles').onclick = saveStartLists;
-    const pick = (event, heat) => { selected.event = event; selected.heat = Math.max(1, Math.min(heat, 99)); following = false; render(); };
+    // Stepping away stops the view following new start lists; stepping back onto the newest one resumes it.
+    const pick = (event, heat) => { selected.event = event; selected.heat = Math.max(1, Math.min(heat, 99)); following = !!lastStartList && lastStartList.event === selected.event && lastStartList.heat === selected.heat; editing = null; render(); };
     $('eventUp').onclick = () => { const next = storedEvents().find(e => e > (selected.event || 0)); if (next) pick(next, 1); };
     $('eventDown').onclick = () => { const prev = storedEvents().filter(e => e < (selected.event || Infinity)).pop(); if (prev) pick(prev, 1); };
     $('heatUp').onclick = () => { if (selected.event) pick(selected.event, Math.min(selected.heat + 1, rosters.events.get(selected.event)?.heats.length || 1)); };
     $('heatDown').onclick = () => { if (selected.event) pick(selected.event, selected.heat - 1); };
     $('viewEventNo').onchange = e => { const n = Math.floor(Number(e.target.value)); if (n >= 1 && n <= 999) pick(n, 1); else render(); };
     $('viewHeatNo').onchange = e => { const n = Math.floor(Number(e.target.value)); if (selected.event && n >= 1) pick(selected.event, n); else render(); };
-    $('follow').onclick = () => {
-        following = !following;
-        if (following && lastStartList) { selected.event = lastStartList.event; selected.heat = lastStartList.heat; }
-        render();
-    };
+    /** Click a lane in the start list to change its swimmer or team in place. Enter or clicking away keeps it; Escape drops it. */
+    let editing = null;                  // { lane } while a row holds inputs
+    $('startList').addEventListener('click', e => {
+        const tr = e.target.closest('tr'); if (!tr || editing || !selected.event) return;
+        const entry = rosters.events.get(selected.event), heat = entry?.heats[selected.heat - 1]; if (!heat) return;
+        const lane = Number(tr.dataset.lane), athlete = heat[lane];
+        editing = { lane };
+        const [, nameCell, teamCell] = tr.children;
+        const name = document.createElement('input'); name.value = athlete.name; name.placeholder = 'Last, First'; name.className = 'edit';
+        const team = document.createElement('input'); team.value = athlete.team; team.placeholder = 'Team'; team.className = 'edit team';
+        nameCell.replaceChildren(name); teamCell.replaceChildren(team); name.focus(); name.select();
+        const finish = keep => {
+            if (!editing) return;
+            if (keep) {
+                heat[lane] = { name: name.value.trim(), team: team.value.trim().toUpperCase().slice(0, 16) };
+                rosters.version++; rosters._view = null; saveRosters(); lastSent = ''; publish();
+            }
+            editing = null; render();
+        };
+        for (const input of [name, team]) {
+            input.addEventListener('keydown', ev => { if (ev.key === 'Enter') finish(true); else if (ev.key === 'Escape') finish(false); });
+            input.addEventListener('blur', () => setTimeout(() => { if (editing && document.activeElement !== name && document.activeElement !== team) finish(true); }, 0));
+        }
+    });
     $('clearRosters').onclick = () => {
-        rosters.clear(); lastRecord = null; lastStartList = null; selected.event = null; selected.heat = 1; following = true;
+        rosters.clear(); lastRecord = null; lastStartList = null; selected.event = null; selected.heat = 1; following = true; editing = null;
         $('fileStatus').textContent = ''; api.store.set(rosterKey(), null).catch(() => {}); lastSent = ''; pushSchedule(); render();
     };
 
