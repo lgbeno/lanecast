@@ -11,17 +11,13 @@ const fs = require('node:fs/promises');
 const { SerialRoles } = require('./serial');
 const { Relay } = require('./relay');
 const { Store } = require('./store');
-const { CameraEngine } = require('./cameras');
 const { Themes } = require('./themes');
 
-const PARTS = ['timer', 'events', 'cameras'];
-const IMAGES = ['png', 'jpg', 'jpeg', 'gif', 'webp'], VIDEOS = ['mp4', 'm4v', 'mov', 'webm'];
-const MIME = { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', webp: 'image/webp', mp4: 'video/mp4', m4v: 'video/mp4', mov: 'video/quicktime', webm: 'video/webm' };
-const MEDIA_LIMIT = 500 * 1024 * 1024;
+const { CameraEngine, IMAGES, VIDEOS } = require('./cameras');
+const PARTS = ['timer', 'events'];
 let win = null, serial = null, relay = null, store = null, cameras = null, themes = null;
-// Each part can be simulated on its own: the timer, the meet data, the cameras.
-const simulated = { timer: false, events: false, cameras: false };
-let simMedia = null;             // the simulated camera's picture: { path, name, kind: 'image' | 'video', mime, version }
+// The timer and the meet data can be simulated on their own; cameras each carry their own switch.
+const simulated = { timer: false, events: false };
 // Nothing is simulated unless it was last time; LANECAST_SIMULATE=1 (the smoke test) turns everything on.
 const allSimulated = process.env.LANECAST_SIMULATE === '1';
 const send = (channel, ...args) => { if (win && !win.isDestroyed()) win.webContents.send(channel, ...args); };
@@ -42,7 +38,7 @@ function createWindow() {
     win.on('closed', () => { win = null; });
 }
 
-/** Simulate one part: the made-up console on a pretend port, start lists from Load or Fetch, or a picture standing in for the camera. */
+/** Simulate one part: the made-up console on a pretend port, or start lists from Load or Fetch. */
 async function setSimulated(part, on) {
     if (!PARTS.includes(part)) throw new Error('Unknown part');
     simulated[part] = !!on;
@@ -50,20 +46,15 @@ async function setSimulated(part, on) {
     store.set('simulate', { ...simulated });
     send('sim:changed', simState());
 }
-const mediaDescriptor = () => simMedia ? { name: simMedia.name, kind: simMedia.kind, mime: simMedia.mime, version: simMedia.version } : null;
-const simState = () => ({ ...simulated, media: mediaDescriptor(), ...(serial ? serial.simState() : { event: null, heat: null, running: false, racing: false }) });
-async function setMedia(file) {
-    if (!file) simMedia = null;
-    else {
-        const ext = path.extname(file).slice(1).toLowerCase();
-        const kind = IMAGES.includes(ext) ? 'image' : VIDEOS.includes(ext) ? 'video' : null;
-        if (!kind) throw new Error('Choose a photo (png, jpg, gif, webp) or a video (mp4, mov, m4v, webm)');
-        const stat = await fs.stat(file);
-        if (stat.size > MEDIA_LIMIT) throw new Error('That file is over 500 MB; a shorter clip, please');
-        simMedia = { path: file, name: path.basename(file), kind, mime: MIME[ext], version: Date.now() };
-    }
-    store.set('simMedia', simMedia ? { path: simMedia.path } : null);
-    send('sim:changed', simState());
+const simState = () => ({ ...simulated, ...(serial ? serial.simState() : { event: null, heat: null, running: false, racing: false }) });
+/** A photo or video for a simulated camera, chosen through the file dialog. */
+async function chooseMedia(id) {
+    const { canceled, filePaths } = await dialog.showOpenDialog(win, {
+        title: 'A photo or video from the camera’s view', properties: ['openFile'],
+        filters: [{ name: 'Photos and videos', extensions: [...IMAGES, ...VIDEOS] }, { name: 'Photos', extensions: IMAGES }, { name: 'Videos', extensions: VIDEOS }]
+    });
+    if (canceled || !filePaths.length) return cameras.describe(cameras.find(id));
+    return cameras.setMedia(id, filePaths[0]);
 }
 
 app.whenReady().then(async () => {
@@ -72,7 +63,6 @@ app.whenReady().then(async () => {
     await store.load();
     const saved = store.get('simulate', {});
     for (const p of PARTS) simulated[p] = allSimulated || !!(saved && saved[p]);
-    try { const m = store.get('simMedia'); if (m && m.path) await setMedia(m.path); } catch (e) { simMedia = null; }
     // The window may open this computer's cameras (webcams, an iPhone as a camera); nothing else asks for permissions.
     const { session } = require('electron');
     session.defaultSession.setPermissionRequestHandler((contents, permission, callback) => callback(permission === 'media'));
@@ -108,18 +98,7 @@ ipcMain.handle('sim:control', (event, e, h) => { serial.simControl(Number(e), Nu
 ipcMain.handle('sim:race', (event, on) => { serial.simRace(!!on); return simState(); });
 ipcMain.handle('sim:run', (event, on, e, h) => { serial.simRun(!!on, e === undefined || e === null ? undefined : Number(e), Number(h) || 1); return simState(); });
 ipcMain.handle('sim:schedule', (event, meet) => { serial.simSchedule(meet); return simState(); });
-ipcMain.handle('sim:chooseMedia', async () => {
-    const { canceled, filePaths } = await dialog.showOpenDialog(win, {
-        title: 'A photo or video from the camera’s view', properties: ['openFile'],
-        filters: [{ name: 'Photos and videos', extensions: [...IMAGES, ...VIDEOS] }, { name: 'Photos', extensions: IMAGES }, { name: 'Videos', extensions: VIDEOS }]
-    });
-    if (canceled || !filePaths.length) return mediaDescriptor();
-    await setMedia(filePaths[0]);
-    return mediaDescriptor();
-});
-ipcMain.handle('sim:clearMedia', async () => { await setMedia(null); return null; });
-/** The chosen photo or video itself, for the window to draw: { bytes, mime }. Only ever the file chosen through the dialog. */
-ipcMain.handle('sim:mediaBytes', async () => simMedia ? { bytes: new Uint8Array(await fs.readFile(simMedia.path)), mime: simMedia.mime, version: simMedia.version } : null);
+
 ipcMain.handle('relay:status', () => relay.status());
 ipcMain.on('relay:send', (event, text) => relay.broadcast(text));
 ipcMain.handle('cameras:status', () => cameras.state());
@@ -133,7 +112,12 @@ ipcMain.handle('cameras:access', async () => {
 });
 ipcMain.handle('cameras:list', () => cameras.list());
 ipcMain.handle('cameras:add', (event, camera) => cameras.add(camera || {}));
+ipcMain.handle('cameras:update', (event, id, patch) => cameras.update(String(id), patch || {}));
 ipcMain.handle('cameras:remove', (event, id) => cameras.remove(String(id)));
+ipcMain.handle('cameras:chooseMedia', (event, id) => chooseMedia(String(id)));
+ipcMain.handle('cameras:clearMedia', (event, id) => cameras.setMedia(String(id), null));
+/** A simulated camera's stand-in, for the window to draw: { bytes, mime }. Only ever a file chosen through the dialog. */
+ipcMain.handle('cameras:mediaBytes', (event, id) => cameras.mediaBytes(String(id)));
 ipcMain.handle('themes:list', () => themes.list());
 ipcMain.handle('themes:active', () => store.get('theme', 'b-classic'));
 ipcMain.handle('themes:select', (event, id) => { if (!themes.get(String(id))) throw new Error('No such theme'); store.set('theme', String(id)); return String(id); });

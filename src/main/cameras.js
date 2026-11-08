@@ -1,14 +1,21 @@
-/* Cameras: a go2rtc process the app runs beside itself. It takes each camera's stream (RTSP
- * today) and hands it to the window over WebRTC, so the window can show it and, later,
- * composite it. The list of cameras is ours; go2rtc is told about it at start and on change.
+/* Cameras: the list the user keeps, and a go2rtc process the app runs beside itself for the
+ * network ones. Each camera has a name, a source (an RTSP address, a device on this computer as
+ * device:<id>, or nothing), a simulate switch, and a stand-in photo or video shown while
+ * simulated. go2rtc takes each network camera's stream and hands it to the window over WebRTC;
+ * device cameras are opened by the window itself; simulated ones are drawn by the window from
+ * the stand-in. go2rtc is told the list at start and on change.
  */
 'use strict';
 const { spawn, execFileSync } = require('node:child_process');
 const fs = require('node:fs');
+const fsp = require('node:fs/promises');
 const path = require('node:path');
 
 const OS = { darwin: 'mac', win32: 'win', linux: 'linux' };
 const RETRY_MS = 3000, START_TIMEOUT_MS = 6000;
+const IMAGES = ['png', 'jpg', 'jpeg', 'gif', 'webp'], VIDEOS = ['mp4', 'm4v', 'mov', 'webm'];
+const MIME = { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', webp: 'image/webp', mp4: 'video/mp4', m4v: 'video/mp4', mov: 'video/quicktime', webm: 'video/webm' };
+const MEDIA_LIMIT = 500 * 1024 * 1024;
 
 /** Where this build keeps go2rtc: beside the app's resources when packaged, in vendor/ in development. */
 function findBinary(packaged) {
@@ -17,7 +24,7 @@ function findBinary(packaged) {
         : path.join(__dirname, '..', '..', 'vendor', 'go2rtc', `${OS[process.platform]}-${process.arch}`, name);
     return fs.existsSync(file) ? file : null;
 }
-/** ffmpeg on the PATH, if any: go2rtc uses it for test patterns and for cameras that need transcoding. */
+/** ffmpeg on the PATH, if any: go2rtc uses it for cameras that need transcoding. */
 function findFfmpeg() {
     try { return execFileSync(process.platform === 'win32' ? 'where' : 'which', ['ffmpeg'], { stdio: ['ignore', 'pipe', 'ignore'] }).toString().split(/\r?\n/)[0].trim() || null; }
     catch (e) { return null; }
@@ -25,19 +32,31 @@ function findFfmpeg() {
 const yamlString = s => JSON.stringify(String(s));
 /** A camera attached to this computer (a webcam, an iPhone as a camera): the window opens it itself, by device id. */
 const isDevice = c => /^device:/.test(c.url);
+/** A camera go2rtc should carry: a network source. */
+const isNetwork = c => !!c.url && !isDevice(c);
+const validUrl = url => /^[a-z][a-z0-9+.-]*:/i.test(url);
 
 class CameraEngine {
-    /** `cameras` is [{ id, name, url }]; `onChange(cameras)` is called to persist it, `onStatus(state)` on engine changes. */
+    /** `cameras` is the saved list; `onChange(cameras)` is called to persist it, `onStatus(state)` on engine changes. */
     constructor({ packaged = false, dataDir, port = 1984, webrtcPort = 8555, rtspPort = 8554, cameras = [], onChange = () => {}, onStatus = () => {} }) {
         this.binary = findBinary(packaged); this.ffmpeg = findFfmpeg();
         this.config = path.join(dataDir, 'go2rtc.yaml');
         this.port = port; this.webrtcPort = webrtcPort; this.rtspPort = rtspPort; this.api = `http://127.0.0.1:${port}`;
-        this.cameras = cameras.filter(c => c && typeof c.id === 'string' && typeof c.url === 'string').map(c => ({ id: c.id, name: String(c.name || ''), url: c.url }));
+        this.cameras = cameras.filter(c => c && typeof c.id === 'string').map(c => ({
+            id: c.id, name: String(c.name || ''), url: typeof c.url === 'string' ? c.url : '', simulate: !!c.simulate,
+            media: c.media && typeof c.media.path === 'string' ? this._media(c.media.path) : null
+        }));
         this.onChange = onChange; this.onStatus = onStatus;
         this.process = null; this.running = false; this.stopping = false; this.error = this.binary ? '' : 'go2rtc is not in this build'; this.version = ''; this.log = []; this.retry = null;
     }
     state() { return { running: this.running, error: this.error, api: this.api, version: this.version, installed: !!this.binary, ffmpeg: !!this.ffmpeg, log: this.log.slice(-5) }; }
     _changed() { this.onStatus(this.state()); }
+    _save() { this.onChange(this.cameras.map(c => ({ id: c.id, name: c.name, url: c.url, simulate: c.simulate, media: c.media ? { path: c.media.path } : null }))); }
+    _media(file) {
+        const ext = path.extname(file).slice(1).toLowerCase();
+        const kind = IMAGES.includes(ext) ? 'image' : VIDEOS.includes(ext) ? 'video' : null;
+        return kind && fs.existsSync(file) ? { path: file, name: path.basename(file), kind, mime: MIME[ext], version: Date.now() } : null;
+    }
     writeConfig() {
         const lines = ['# Written by Lanecast at each start; edits here are overwritten.',
             'api:', `  listen: ${yamlString('127.0.0.1:' + this.port)}`,
@@ -45,7 +64,7 @@ class CameraEngine {
             'rtsp:', `  listen: ${yamlString('127.0.0.1:' + this.rtspPort)}`,
             'webrtc:', `  listen: ${yamlString(':' + this.webrtcPort)}`, '  ice_servers: []',
             'log:', '  level: "warn"', 'streams:'];
-        for (const c of this.cameras) if (!isDevice(c)) lines.push(`  ${yamlString(c.id)}: ${yamlString(c.url)}`);   // local cameras never go through go2rtc
+        for (const c of this.cameras) if (isNetwork(c)) lines.push(`  ${yamlString(c.id)}: ${yamlString(c.url)}`);
         fs.mkdirSync(path.dirname(this.config), { recursive: true });
         fs.writeFileSync(this.config, lines.join('\n') + '\n');
     }
@@ -81,41 +100,74 @@ class CameraEngine {
         if (this.process) { this.process.kill(); this.process = null; }
         this.running = false;
     }
+    async _tell(method, c) {
+        if (!this.running || !isNetwork(c)) return;
+        try {
+            if (method === 'PUT') await fetch(`${this.api}/api/streams?name=${encodeURIComponent(c.id)}&src=${encodeURIComponent(c.url)}`, { method: 'PUT' });   // may answer 400 and still add it
+            else await fetch(`${this.api}/api/streams?src=${encodeURIComponent(c.id)}`, { method: 'DELETE' });
+        } catch (e) { /* listed at next start */ }
+    }
+    describe(c) { return { id: c.id, name: c.name, url: c.url, simulate: c.simulate, local: isDevice(c), media: c.media ? { name: c.media.name, kind: c.media.kind, version: c.media.version } : null }; }
     /** Cameras with what go2rtc knows about each: whether a source is connected and how many viewers it has. */
     async list() {
         let streams = {};
         if (this.running) { try { streams = await (await fetch(this.api + '/api/streams')).json(); } catch (e) { /* engine busy or gone */ } }
-        return this.cameras.map(c => { const s = streams[c.id] || {}; return { ...c, local: isDevice(c), producers: (s.producers || []).length, consumers: (s.consumers || []).length }; });
+        return this.cameras.map(c => { const s = streams[c.id] || {}; return { ...this.describe(c), producers: (s.producers || []).length, consumers: (s.consumers || []).length }; });
     }
-    async add({ name, url }) {
+    find(id) { const c = this.cameras.find(x => x.id === id); if (!c) throw new Error('No such camera'); return c; }
+    /** A new camera: a network address, a device on this computer, or nothing yet (simulated only). */
+    async add({ name, url, simulate }) {
         name = String(name || '').trim(); url = String(url || '').trim();
-        if (!url) throw new Error('Enter the camera’s address');
-        if (!/^[a-z][a-z0-9+.-]*:/i.test(url)) throw new Error('The address should start with rtsp:// (or another scheme go2rtc understands)');
-        if (this.cameras.some(c => c.url === url)) throw new Error('That camera is already in the list');
+        if (url && !validUrl(url)) throw new Error('The address should start with rtsp:// (or another scheme go2rtc understands)');
+        if (!url && !simulate) throw new Error('Enter the camera’s address, or add it as simulated');
+        if (url && this.cameras.some(c => c.url === url)) throw new Error('That camera is already in the list');
         const id = 'cam-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
-        const camera = { id, name: name || `Camera ${this.cameras.length + 1}`, url };
-        this.cameras.push(camera); this.onChange(this.cameras); this.writeConfig();
-        if (this.running && !isDevice(camera)) {
-            // go2rtc answers this with 400 when it cannot rewrite its own config, yet still adds the stream; the list is what counts.
-            try { await fetch(`${this.api}/api/streams?name=${encodeURIComponent(id)}&src=${encodeURIComponent(url)}`, { method: 'PUT' }); } catch (e) { /* checked below */ }
+        const camera = { id, name: name || `Camera ${this.cameras.length + 1}`, url, simulate: !!simulate, media: null };
+        this.cameras.push(camera); this._save(); this.writeConfig();
+        await this._tell('PUT', camera);
+        if (this.running && isNetwork(camera)) {
             const streams = await (await fetch(this.api + '/api/streams')).json().catch(() => ({}));
             if (!streams[id]) throw new Error('go2rtc did not accept that address');
         }
-        return camera;
+        return this.describe(camera);
     }
-    /** Add or replace a camera with a known id (the test pattern). */
-    async put(camera) {
-        const index = this.cameras.findIndex(c => c.id === camera.id);
-        if (index >= 0) { if (this.cameras[index].url === camera.url) return; this.cameras.splice(index, 1); }
-        this.cameras.push({ id: camera.id, name: String(camera.name || camera.id), url: camera.url }); this.onChange(this.cameras); this.writeConfig();
-        if (this.running) { try { await fetch(`${this.api}/api/streams?name=${encodeURIComponent(camera.id)}&src=${encodeURIComponent(camera.url)}`, { method: 'PUT' }); } catch (e) { /* listed at next start */ } }
+    /** Change a camera's name, address or simulate switch. */
+    async update(id, patch = {}) {
+        const c = this.find(id), before = { ...c };
+        if (patch.name !== undefined) c.name = String(patch.name).trim() || c.name;
+        if (patch.url !== undefined) {
+            const url = String(patch.url).trim();
+            if (url && !validUrl(url)) throw new Error('The address should start with rtsp:// (or another scheme go2rtc understands)');
+            if (url && this.cameras.some(x => x !== c && x.url === url)) throw new Error('Another camera already has that address');
+            c.url = url;
+        }
+        if (patch.simulate !== undefined) c.simulate = !!patch.simulate;
+        if (!c.url && !c.simulate) c.simulate = true;                      // nothing to show otherwise
+        this._save(); this.writeConfig();
+        if (before.url !== c.url) { await this._tell('DELETE', before); await this._tell('PUT', c); }
+        return this.describe(c);
     }
+    /** The stand-in picture for a simulated camera: a photo or video file, or none. */
+    async setMedia(id, file) {
+        const c = this.find(id);
+        if (!file) c.media = null;
+        else {
+            const ext = path.extname(file).slice(1).toLowerCase();
+            if (!IMAGES.includes(ext) && !VIDEOS.includes(ext)) throw new Error('Choose a photo (png, jpg, gif, webp) or a video (mp4, mov, m4v, webm)');
+            const stat = await fsp.stat(file);
+            if (stat.size > MEDIA_LIMIT) throw new Error('That file is over 500 MB; a shorter clip, please');
+            c.media = this._media(file);
+        }
+        this._save();
+        return this.describe(c);
+    }
+    async mediaBytes(id) { const c = this.find(id); return c.media ? { bytes: new Uint8Array(await fsp.readFile(c.media.path)), mime: c.media.mime, version: c.media.version } : null; }
     async remove(id) {
         const index = this.cameras.findIndex(c => c.id === id);
         if (index < 0) return;
-        const [gone] = this.cameras.splice(index, 1); this.onChange(this.cameras); this.writeConfig();
-        if (this.running && !isDevice(gone)) { try { await fetch(`${this.api}/api/streams?src=${encodeURIComponent(id)}`, { method: 'DELETE' }); } catch (e) { /* gone anyway */ } }
+        const [gone] = this.cameras.splice(index, 1); this._save(); this.writeConfig();
+        await this._tell('DELETE', gone);
     }
 }
 
-module.exports = { CameraEngine, findBinary, findFfmpeg };
+module.exports = { CameraEngine, findBinary, findFfmpeg, IMAGES, VIDEOS };

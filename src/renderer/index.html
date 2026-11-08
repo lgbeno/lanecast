@@ -78,17 +78,11 @@
 </div></section>
 
 <section id="cameras" role="tabpanel" aria-labelledby="tab-cameras" hidden>
-<div class="panel-head"><label class="switch"><input type="checkbox" class="simToggle" data-part="cameras"><span></span>Simulate a camera</label></div>
 <div class="columns wide-left">
 <article>
 <p id="engineStatus" class="small">Starting the camera engine…</p>
 <div id="cameraList" class="tiles"></div>
-<p id="noCameras" class="small">No cameras yet. Add one on the right.</p></article>
-<div class="stack">
-<article id="camSim" hidden><h2>Simulated camera</h2>
-<p class="small">A photo or video taken from where the camera will stand, so the overlays can be judged against the real view.</p>
-<div class="actions"><button id="chooseMedia" class="primary">Choose photo or video…</button><button id="clearMedia">Remove</button></div>
-<p id="mediaName" class="small"></p></article>
+<p id="noCameras" class="small">No cameras yet. Add one on the right. Each camera has its own switch between the real picture and a stand-in photo or video, and its own settings.</p></article>
 <article id="camAdd"><h2>Add a camera</h2>
 <h3>On this computer</h3>
 <p class="small">Webcams, capture cards that show up as webcams, and an iPhone as a camera (Continuity Camera on a Mac).</p>
@@ -98,9 +92,22 @@
 <div class="field"><label for="camName">Name</label><input id="camName" placeholder="Pool, wide"></div>
 <div class="field"><label for="camUrl">Address</label><input id="camUrl" placeholder="rtsp://192.168.1.50/1" spellcheck="false"></div>
 <div class="actions"><button id="camAddButton" class="primary">Add</button><span id="camAddStatus" class="small"></span></div>
-<p class="small">Most PTZ cameras serve their main stream at <code>rtsp://&lt;camera ip&gt;/1</code>; if the camera asks for a login, write it as <code>rtsp://user:password@ip/1</code>. Set the camera to H.264. An NDI camera's RTSP output works today; NDI itself comes later.</p></article>
+<p class="small">Most PTZ cameras serve their main stream at <code>rtsp://&lt;camera ip&gt;/1</code>; if the camera asks for a login, write it as <code>rtsp://user:password@ip/1</code>. Set the camera to H.264. An NDI camera's RTSP output works today; NDI itself comes later.</p>
+<h3 class="later">Not here yet</h3>
+<p class="small">A camera you will set up later: add it simulated, with a photo or video from where it will stand, and give it the name your theme expects.</p>
+<div class="actions"><button id="camAddSim">Add a simulated camera</button></div></article>
 </div>
-</div></section>
+<dialog id="cameraDialog"><form method="dialog"><h3 id="cameraDialogTitle">Camera</h3>
+<div class="field"><label for="cdName">Name</label><input id="cdName" placeholder="As your theme calls it, e.g. Wide or Finish"></div>
+<div class="field" id="cdUrlField"><label for="cdUrl">Address</label><input id="cdUrl" placeholder="rtsp://192.168.1.50/1" spellcheck="false"></div>
+<p id="cdSource" class="small"></p>
+<label class="switch cd-switch"><input type="checkbox" id="cdSimulate"><span></span>Simulate this camera: show the stand-in instead of the real picture</label>
+<h3>Stand-in</h3>
+<p class="small">A photo or video taken from where this camera stands, shown while it is simulated.</p>
+<div class="actions"><button id="cdChoose" type="button">Choose photo or video…</button><button id="cdClearMedia" type="button">Remove</button><span id="cdMedia" class="small"></span></div>
+<div class="actions cd-foot"><button id="cdRemove" type="button" class="quiet">Remove this camera</button><span><button id="cdCancel" type="button">Cancel</button> <button id="cdSave" type="button" class="primary">Save</button></span></div>
+</form></dialog>
+</section>
 
 <section id="theme" role="tabpanel" aria-labelledby="tab-theme" hidden>
 <div class="columns wide-left">

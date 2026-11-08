@@ -14,7 +14,8 @@ const WebSocket = require('ws');
 // Nothing is simulated by default; this is how the choice persists from session to session.
 const userData = fs.mkdtempSync(path.join(os.tmpdir(), 'lanecast-smoke-'));
 app.setPath('userData', userData);
-fs.writeFileSync(path.join(userData, 'lanecast.json'), JSON.stringify({ simulate: { timer: true, events: true, cameras: true }, simMedia: { path: path.join(__dirname, '..', 'build', 'icon.png') }, relayPort: 18080 }));
+fs.writeFileSync(path.join(userData, 'lanecast.json'), JSON.stringify({ simulate: { timer: true, events: true }, relayPort: 18080,
+    cameras: [{ id: 'cam-pool', name: 'Pool', url: '', simulate: true, media: { path: path.join(__dirname, '..', 'build', 'icon.png') } }] }));
 require('../src/main/main');
 const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
 const shot = process.argv.find(a => a.endsWith('.png'));
@@ -27,7 +28,7 @@ app.on('browser-window-created', (event, win) => {
         const js = code => win.webContents.executeJavaScript(code);
         const text = id => `document.getElementById(${JSON.stringify(id)}).textContent`;
         const dots = `Object.fromEntries(['stream','timer','events','cameras','theme'].map(t => [t, document.getElementById('tab-' + t).firstElementChild.dataset.ready === 'true']))`;
-        const badges = `[...document.querySelectorAll('.sim-badge')].filter(b => !b.hidden).map(b => b.parentElement.id.slice(4)).join(',')`;
+        const badges = `[...document.querySelectorAll('.tabs .sim-badge')].filter(b => !b.hidden).map(b => b.parentElement.id.slice(4)).join(',')`;
         const click = async (id, ms = 300) => { await js(`document.getElementById(${JSON.stringify(id)}).click()`); await wait(ms); };
         await wait(2500);
         const received = [];
@@ -37,7 +38,7 @@ app.on('browser-window-created', (event, win) => {
 
         // Everything simulated at start: the pretend console connects by itself, no port controls show.
         const start = await js(`({ timer: ${text('timerStatus')}, timerControls: document.getElementById('timerPort').parentElement.hidden, simPanel: !document.getElementById('simConsole').hidden && document.getElementById('timer').querySelector('.sim-panel') === null,
-            meet: ${text('meetStatus')}, fetch: !document.getElementById('fetchSim').hidden && document.getElementById('loadFiles').hidden && document.getElementById('saveFiles').hidden, camSim: !document.getElementById('camSim').hidden, camAdd: document.getElementById('camAdd').hidden,
+            meet: ${text('meetStatus')}, fetch: !document.getElementById('fetchSim').hidden && document.getElementById('loadFiles').hidden && document.getElementById('saveFiles').hidden, camSim: document.querySelectorAll('.tile .camSim:checked').length === 1, camAdd: !document.getElementById('camAdd').hidden,
             badges: ${badges}, shown: document.querySelector('[role=tabpanel]:not([hidden])').id, error: document.getElementById('error').hidden ? '' : ${text('error')},
             label: ${text('camerasLabel')}, bar: [...document.querySelector('.topbar').children].filter(c => !c.hidden).map(c => c.id || c.className.split(' ').pop()).join('+'), barHeight: document.querySelector('.topbar').offsetHeight,
             drawer: !document.getElementById('drawer').hidden, toggle: !document.getElementById('drawerToggle').hidden,
@@ -49,7 +50,7 @@ app.on('browser-window-created', (event, win) => {
         check(start.badges === 'timer,events,cameras', 'the settings file is honoured: Sim badges on Timer, Events and Cameras, none on Stream: ' + start.badges);
         check(/^Simulated · the pretend console is connected · its controls are on the Stream tab/.test(start.timer) && start.timerControls && start.simPanel, 'timer: pretend console connected, port controls gone, a note that the controls are on the Stream tab');
         check(/^Simulated/.test(start.meet) && start.fetch, 'events: no port, Fetch simulated events in place of Load and Save');
-        check(start.camSim && start.camAdd, 'cameras: the simulated camera card replaces Add a camera');
+        check(start.camSim && start.camAdd, 'cameras: the saved camera is simulated by its own switch; Add a camera stays');
         check(!start.error, 'no error shown: ' + start.error);
 
         // Events: fetch a made-up meet; it becomes the console's schedule.
@@ -79,21 +80,37 @@ app.on('browser-window-created', (event, win) => {
         check(Number(r.packets) >= 5 && received.length >= 5 && received.every(m => m.type === 'state' || m.type === 'event') && received.some(m => m.type === 'event' && m.name === 'race.start'), `packets published and received, states and events: ${r.packets} / ${received.length}, events ${received.filter(m => m.type === 'event').map(m => m.name).join(',')}`);
         check(received.some(p => p.lanes.some(l => l.name)), 'packets carry names from the start lists');
 
-        // Cameras: the simulated camera shows the photo from the settings file, live, without ffmpeg; the program shows it.
-        const cams = await js(`({ tiles: document.querySelectorAll('.tile').length, status: [...document.querySelectorAll('.tile .small')].map(s => s.textContent), media: ${text('mediaName')}, engine: ${text('engineStatus')}, ready: ${dots},
-            program: document.getElementById('programVideo').videoWidth, note: document.getElementById('stageNote').hidden, bug: document.getElementById('overlayFrame').src.startsWith('theme://b-classic/overlay.html'), pstatus: ${text('programStatus')}, theme: ${text('themeStatus')} })`);
-        check(cams.tiles === 1 && /^Live · 1280×720/.test(cams.status[0]) && cams.media === 'Photo: icon.png', `the simulated camera shows the remembered photo, live: ${cams.status.join(' / ')} · ${cams.media}`);
+        // Cameras: the saved camera's stand-in photo plays, without ffmpeg; the program shows it.
+        const cams = await js(`({ tiles: document.querySelectorAll('.tile').length, status: [...document.querySelectorAll('.tile .small')].map(s => s.textContent), engine: ${text('engineStatus')}, ready: ${dots},
+            program: document.getElementById('programVideo').videoWidth, note: document.getElementById('stageNote').hidden, bug: document.getElementById('overlayFrame').src.startsWith('theme://b-classic/overlay.html'), pstatus: ${text('programStatus')}, theme: ${text('themeStatus')}, name: document.querySelector('.tile .name').textContent, badge: !document.querySelector('.tile .sim-badge').hidden })`);
+        check(cams.tiles === 1 && cams.name === 'Pool' && cams.badge && /^Stand-in · 1280×720/.test(cams.status[0]), `the camera Pool shows its stand-in photo, live, with a Sim badge: ${cams.status.join(' / ')}`);
         // This computer's cameras are listed without asking for access first; the list may be empty on a build machine.
-        await js(`document.getElementById('tab-cameras').click(); document.querySelector('#cameras .simToggle').click()`); await wait(800);
+        await js(`document.getElementById('tab-cameras').click()`); await wait(800);
         const local = await js(`({ list: document.getElementById('deviceList').textContent, rows: document.querySelectorAll('.device').length, note: ${text('deviceNote')}, find: !!document.getElementById('findDevices') })`);
         check(local.find && (local.rows > 0 || /Find cameras|No cameras/.test(local.list)), `local cameras listed or none found: ${local.rows} row(s) · ${local.list.slice(0, 60)}`);
-        await js(`document.querySelector('#cameras .simToggle').click(); document.getElementById('tab-stream').click()`); await wait(1500);
+        // A second camera, by address; the tab turns plural; its own switch makes it a stand-in; its settings dialog renames it.
+        await js(`document.getElementById('camName').value = 'Finish'; document.getElementById('camUrl').value = 'rtsp://127.0.0.1:1/none'`); await click('camAddButton', 1500);
+        const two = await js(`({ label: ${text('camerasLabel')}, tiles: [...document.querySelectorAll('.tile .name')].map(n => n.textContent), status: ${text('camAddStatus')} })`);
+        check(two.label === 'Cameras' && two.tiles.join(',') === 'Pool,Finish', `a second camera: tab reads Cameras, tiles ${two.tiles.join(' and ')}`);
+        await js(`[...document.querySelectorAll('.tile')].find(t => t.querySelector('.name').textContent === 'Finish').querySelector('.camSim').click()`); await wait(1200);
+        const finish = await js(`(() => { const t = [...document.querySelectorAll('.tile')].find(t => t.querySelector('.name').textContent === 'Finish'); return { badge: !t.querySelector('.sim-badge').hidden, status: t.querySelector('.small').textContent, tabBadge: ${badges} }; })()`);
+        check(finish.badge && /^No stand-in yet/.test(finish.status), `Finish switched to simulated on its own: ${finish.status}`);
+        await js(`[...document.querySelectorAll('.tile')].find(t => t.querySelector('.name').textContent === 'Finish').querySelector('.gear').click()`); await wait(400);
+        const dlg = await js(`({ open: document.getElementById('cameraDialog').open, name: document.getElementById('cdName').value, url: document.getElementById('cdUrl').value, sim: document.getElementById('cdSimulate').checked })`);
+        check(dlg.open && dlg.name === 'Finish' && dlg.url === 'rtsp://127.0.0.1:1/none' && dlg.sim, 'its settings dialog shows name, address and the switch');
+        await js(`document.getElementById('cdName').value = 'Finish line'; document.getElementById('cdSimulate').checked = false`); await click('cdSave', 1200);
+        const renamed = await js(`({ open: document.getElementById('cameraDialog').open, tiles: [...document.querySelectorAll('.tile .name')].map(n => n.textContent), sims: document.querySelectorAll('.tile .camSim:checked').length, select: [...document.getElementById('programCamera').options].map(o => o.text).join(',') })`);
+        check(!renamed.open && renamed.tiles.join(',') === 'Pool,Finish line' && renamed.sims === 1 && renamed.select === 'Pool,Finish line', `saved: renamed to Finish line, back to real; the program camera list follows`);
+        await js(`[...document.querySelectorAll('.tile')].find(t => t.querySelector('.name').textContent === 'Finish line').querySelector('.gear').click()`); await wait(300); await click('cdRemove', 1200);
+        check(await js(`document.querySelectorAll('.tile').length === 1 && ${text('camerasLabel')} === 'Camera'`), 'removed from its dialog; tab reads Camera again');
+        await js(`document.getElementById('tab-stream').click()`); await wait(1500);
         check(/^Camera engine running/.test(cams.engine), 'camera engine running: ' + cams.engine);
         const pixel = await js(`(() => { const v = document.getElementById('programVideo'), c = document.createElement('canvas'); c.width = 64; c.height = 36; const x = c.getContext('2d'); x.drawImage(v, 0, 0, 64, 36); const d = x.getImageData(0, 0, 64, 36).data; let lit = 0; for (let i = 0; i < d.length; i += 4) if (d[i] + d[i + 1] + d[i + 2] > 120) lit++; return lit; })()`);
         check(pixel > 200, `the photo is actually drawn (lit pixels in the program: ${pixel})`);
-        await click('clearMedia', 2500);
-        const none = await js(`({ media: ${text('mediaName')}, status: document.querySelector('.tile .small').textContent, ready: ${dots} })`);
-        check(none.media === 'No photo or video chosen.' && none.status === 'No photo or video chosen' && !none.ready.cameras, `photo removed: nothing stands in, the dot goes quiet: ${none.media} · ${none.status}`);
+        await js(`document.getElementById('tab-cameras').click(); document.querySelector('.tile .gear').click()`); await wait(300); await click('cdClearMedia', 2500);
+        const none = await js(`({ media: ${text('cdMedia')}, status: document.querySelector('.tile .small').textContent, ready: ${dots} })`);
+        check(none.media === 'None yet.' && /^No stand-in yet/.test(none.status) && !none.ready.cameras, `stand-in removed in the dialog: the dot goes quiet: ${none.status}`);
+        await click('cdCancel', 300); await js(`document.getElementById('tab-stream').click()`); await wait(300);
         check(cams.ready.cameras && cams.ready.stream && cams.program > 0 && cams.note && cams.bug, `program shows the camera under the theme's overlay: ${cams.program}px`);
         check(/^Classic · overlay ready$/.test(cams.theme) && cams.ready.theme, `the Classic theme is up and the Theme dot is green: ${cams.theme}`);
         // Themes: switch to the template (which has a control panel) and back.
@@ -145,12 +162,12 @@ app.on('browser-window-created', (event, win) => {
         await js(`document.querySelector('#timer .simToggle').click()`); await wait(1500);
         const timerOff = await js(`({ timer: ${text('timerStatus')}, controls: !document.getElementById('timerPort').parentElement.hidden, panel: document.getElementById('simConsole').hidden, badges: ${badges}, dot: ${dots} })`);
         check(timerOff.timer === 'Not connected.' && timerOff.controls && timerOff.panel && timerOff.badges === 'events,cameras' && !timerOff.dot.timer, `timer back to real: ${JSON.stringify(timerOff)}`);
-        await js(`document.querySelector('#cameras .simToggle').click()`); await wait(1000);
-        const camOff = await js(`({ tiles: document.querySelectorAll('.tile').length, camAdd: !document.getElementById('camAdd').hidden, badges: ${badges} })`);
-        check(camOff.tiles === 0 && camOff.camAdd && camOff.badges === 'events', `camera back to real: ${JSON.stringify(camOff)}`);
+        // The camera keeps its own switch: a stand-in-only camera stays simulated, and so does the tab's badge.
+        const camStill = await js(`({ tiles: document.querySelectorAll('.tile').length, disabled: document.querySelector('.tile .camSim').disabled, badges: ${badges} })`);
+        check(camStill.tiles === 1 && camStill.disabled && camStill.badges === 'events,cameras', `a camera with no address stays a stand-in, its switch disabled: ${JSON.stringify(camStill)}`);
         await js(`document.querySelector('#timer .simToggle').click()`); await wait(2500);
         const timerOn = await js(`({ timer: ${text('timerStatus')}, badges: ${badges} })`);
-        check(/connected/.test(timerOn.timer) && timerOn.badges === 'timer,events', `timer simulated again reconnects: ${JSON.stringify(timerOn)}`);
+        check(/connected/.test(timerOn.timer) && timerOn.badges === 'timer,events,cameras', `timer simulated again reconnects: ${JSON.stringify(timerOn)}`);
 
         socket.close();
         console.log(failed ? 'SMOKE FAILED' : 'SMOKE PASSED');
