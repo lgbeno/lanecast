@@ -14,7 +14,8 @@ const WebSocket = require('ws');
 // Nothing is simulated by default; this is how the choice persists from session to session.
 const userData = fs.mkdtempSync(path.join(os.tmpdir(), 'lanecast-smoke-'));
 app.setPath('userData', userData);
-fs.writeFileSync(path.join(userData, 'lanecast.json'), JSON.stringify({ simulate: { timer: true, events: true }, relayPort: 18080,
+// The project saved last time has since been deleted: the app must still start (it once died on this line), untitled again.
+fs.writeFileSync(path.join(userData, 'lanecast.json'), JSON.stringify({ simulate: { timer: true, events: true }, relayPort: 18080, projectPath: path.join(userData, 'Gone.lanecast'),
     cameras: [{ id: 'cam-pool', name: 'Pool', url: '', simulate: true, media: { path: path.join(__dirname, '..', 'build', 'icon.png') } }] }));
 require('../src/main/main');
 const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
@@ -172,7 +173,8 @@ app.on('browser-window-created', (event, win) => {
         // Projects: save everything to a file, lose a camera, open the file: the camera is back and the project's own theme copy is in use.
         const zip = require('../src/main/zip');
         const projectFile = path.join(userData, 'Spring' + '.lanecast');
-        const untitled = win.getTitle();
+        const untitled = win.getTitle(), dangling = await js(`window.lanecast.project.info()`);
+        check(dangling.path === null && dangling.name === 'Untitled project', `a project path to a deleted file is dropped at start: ${JSON.stringify(dangling)}`);
         await js(`document.getElementById('projectButton').click()`); await wait(200);
         await js(`(() => { const i = document.getElementById('projectName'); i.focus(); i.value = 'Spring'; i.dispatchEvent(new Event('change')); })()`); await wait(600);
         check(untitled === 'Lanecast' && win.getTitle() === 'Lanecast – Spring' && await js(`document.getElementById('projectDialog').open`), `the Project dialog names the project; the title bar reads "${win.getTitle()}" (was "${untitled}")`);
