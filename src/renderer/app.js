@@ -125,12 +125,17 @@
         }, 300);
     }
 
-    // ---- overlay feed --------------------------------------------------------------------
+    // ---- overlay feed and the theme ---------------------------------------------------------
+    const tracker = new Events.Tracker();         // what happened: heat lined up, race started, lane finished…
+    /** The state to the theme and the feed on every change (at most once a second when nothing changes); events as they happen. */
     function publish() {
         if (!connected('timer') || !latest.event || !latest.heat) return;
-        const serialized = JSON.stringify(Packet.scoreboard(latest, rosters.view())), now = performance.now();
+        const view = rosters.view(), now = performance.now();
+        for (const e of tracker.update(latest, view, now)) { const message = Packet.event(e); api.relay.send(JSON.stringify(message)); toTheme(message); }
+        const message = Packet.state(latest, view, { phase: tracker.phase, cameras: cameraList.map(c => ({ id: c.id, name: c.name })), camera: programCameraId() });
+        const serialized = JSON.stringify(message);
         if (serialized === lastSent && now - lastSendAt < 1000) return;
-        api.relay.send(serialized); lastSent = serialized; lastSendAt = now; packets++; lastPacketAt = now;
+        api.relay.send(serialized); toTheme(message); lastSent = serialized; lastSendAt = now; packets++; lastPacketAt = now;
     }
 
     // ---- cameras -------------------------------------------------------------------------
@@ -267,15 +272,7 @@
     let programCamera = null;            // chosen id, or null for the first camera
     const live = false;                  // on air: set by the YouTube output once it exists
     const programCameraId = () => cameraList.some(c => c.id === programCamera) ? programCamera : cameraList[0]?.id || null;
-    const bugRow = (lane, athlete, time, placed) => {
-        const li = document.createElement('li'); if (placed) li.className = 'placed';
-        const n = document.createElement('span'); n.className = 'lane'; n.textContent = placed ? `${placed}.` : String(lane);
-        const name = document.createElement('span'); name.className = 'name'; name.textContent = athlete?.name || '';
-        if (athlete?.team) { const team = document.createElement('small'); team.textContent = athlete.team; name.append(team); }
-        const t = document.createElement('span'); t.className = 'time'; t.textContent = time;
-        li.append(n, name, t); return li;
-    };
-    /** The picture: the program camera under a lower third built from the timer and the start lists. */
+    /** The picture: the program camera, placed as the theme asks, under the theme's overlay. */
     function renderProgram() {
         const id = programCameraId(), player = id ? players.get(id) : null, video = $('programVideo');
         const source = player?.video.srcObject || null;
@@ -283,22 +280,81 @@
         const picture = !!player?.live && (id !== SIM_CAMERA || !!simCamera?.hasPicture);
         $('stageNote').hidden = picture;
         $('stageNote').textContent = !cameraList.length ? 'No camera. Add one on the Camera tab.' : id === SIM_CAMERA && !sim.media ? 'Simulated camera · choose a photo or video on the Camera tab' : 'Waiting for the camera…';
-        const showBug = connected('timer') && latest.event;
-        $('bug').hidden = !showBug;
-        if (showBug) {
-            const roster = rosters.view().get(latest.event), heat = roster?.heats[latest.heat - 1] || [];
-            $('bugEvent').textContent = `EVENT ${latest.event} · HEAT ${latest.heat || '—'}`;
-            $('bugTitle').textContent = roster?.title || '';
-            $('bugClock').textContent = latest.clock || '0:00.0';
-            const finished = latest.lanes.filter(l => l.time && l.place).sort((a, b) => Number(a.place) - Number(b.place));
-            const rows = finished.length ? finished.map(l => bugRow(l.lane, heat[l.lane - 1], l.time, l.place))
-                : latest.lanes.filter((l, i) => heat[i]?.name).map(l => bugRow(l.lane, heat[l.lane - 1], l.time || '', 0));
-            $('bugLanes').replaceChildren(...rows);
-        }
         $('goLive').disabled = true; $('goLive').title = 'Streaming out is not built yet';
         $('programStatus').textContent = live ? 'Live' : picture ? 'Idle · program ready' : 'Idle';
         return picture;
     }
+
+    // ---- theme ---------------------------------------------------------------------------
+    // The theme's overlay page runs in a frame over the picture, its control page in a box in the deck.
+    // Both get the state and the events; either may direct the picture or talk to the other.
+    const themes = { list: [], active: null, activeId: null, ready: { overlay: false, control: false }, log: [] };
+    const frames = { overlay: $('overlayFrame'), control: $('controlFrame') };
+    const toFrame = (which, message) => { if (themes.ready[which]) frames[which].contentWindow?.postMessage(message, '*'); };
+    const toTheme = message => { toFrame('overlay', message); toFrame('control', message); };
+    function loadTheme(theme) {
+        themes.active = theme; themes.ready = { overlay: false, control: false };
+        frames.overlay.src = theme ? `${theme.url}${theme.overlay}?role=overlay` : 'about:blank';
+        $('controlBox').hidden = !theme?.control;
+        if (theme?.control) { frames.control.style.width = theme.control.width + 'px'; frames.control.style.height = theme.control.height + 'px'; frames.control.src = `${theme.url}${theme.control.page}?role=control`; }
+        else frames.control.src = 'about:blank';
+        setLayout({ x: 0, y: 0, w: 1, h: 1, fit: 'contain' });
+        requestAnimationFrame(fitStage);
+    }
+    /** Where the camera sits in the picture, as fractions, set by the theme. */
+    function setLayout(box) {
+        const clamp = (v, d) => Number.isFinite(Number(v)) ? Math.max(0, Math.min(1, Number(v))) : d;
+        const v = $('programVideo'), x = clamp(box.x, 0), y = clamp(box.y, 0), w = clamp(box.w, 1), h = clamp(box.h, 1);
+        v.style.left = x * 100 + '%'; v.style.top = y * 100 + '%'; v.style.width = w * 100 + '%'; v.style.height = h * 100 + '%';
+        v.style.objectFit = box.fit === 'cover' ? 'cover' : 'contain';
+    }
+    const cameraByRef = ref => cameraList.find(c => c.id === ref) || cameraList.find(c => c.name.toLowerCase() === String(ref).toLowerCase()) || null;
+    window.addEventListener('message', e => {
+        const from = e.source === frames.overlay.contentWindow ? 'overlay' : e.source === frames.control.contentWindow ? 'control' : null;
+        const m = e.data; if (!from || !m || typeof m !== 'object') return;
+        switch (m.type) {
+            case 'ready':
+                themes.ready[from] = true;
+                toFrame(from, { type: 'hello', theme: { id: themes.active?.id, name: themes.active?.name }, size: { width: $('stage').clientWidth, height: $('stage').clientHeight } });
+                if (lastSent) toFrame(from, JSON.parse(lastSent));
+                renderThemes(); render(); break;
+            case 'camera': { const cam = cameraByRef(m.select); if (cam) { programCamera = cam.id; lastSent = ''; render(); } break; }
+            case 'layout': setLayout(m); break;
+            case 'control': toFrame('overlay', { type: 'control', data: m.data }); break;      // control panel -> overlay
+            case 'overlay': toFrame('control', { type: 'overlay', data: m.data }); break;      // overlay -> control panel
+            case 'log': themes.log.push(`${new Date().toLocaleTimeString()} ${from}: ${String(m.message).slice(0, 300)}`); if (themes.log.length > 60) themes.log.shift(); renderThemes(); break;
+        }
+    });
+    async function refreshThemes(selectId) {
+        try { themes.list = await api.themes.list(); } catch (e) { themes.list = []; showError(e); }
+        const id = selectId || themes.activeId || (await api.themes.active().catch(() => 'b-classic'));
+        const theme = themes.list.find(t => t.id === id) || themes.list.find(t => t.id === 'b-classic') || themes.list[0] || null;
+        if (theme?.id !== themes.activeId || !themes.active) { themes.activeId = theme?.id || null; loadTheme(theme); }
+        renderThemes();
+    }
+    function renderThemes() {
+        const list = $('themeList');
+        list.replaceChildren(...themes.list.map(t => {
+            const card = document.createElement('figure'); card.className = 'theme' + (t.id === themes.activeId ? ' active' : '');
+            const h = document.createElement('h3'); h.textContent = t.name; const v = document.createElement('span'); v.className = 'count'; v.textContent = t.version; h.append(v);
+            const src = document.createElement('div'); src.className = 'source'; src.textContent = (t.source === 'mine' ? 'My themes' : 'Built in') + (t.control ? ' · control panel' : '');
+            const p = document.createElement('p'); p.className = 'small'; p.textContent = t.description;
+            const actions = document.createElement('div'); actions.className = 'actions';
+            const use = document.createElement('button'); use.textContent = t.id === themes.activeId ? 'In use' : 'Use'; use.disabled = t.id === themes.activeId; use.className = t.id === themes.activeId ? '' : 'primary';
+            use.onclick = async () => { try { await api.themes.select(t.id); themes.activeId = t.id; loadTheme(t); renderThemes(); } catch (e) { showError(e); } };
+            actions.append(use); card.append(h, src, p, actions); return card;
+        }));
+        $('themeStatus').textContent = themes.active ? `${themes.active.name} · ${themes.ready.overlay ? 'overlay ready' : 'loading overlay'}${themes.active.control ? themes.ready.control ? ' · control panel ready' : ' · loading control panel' : ''}` : 'no theme';
+        $('themeLog').textContent = themes.log.length ? themes.log.join('\n') : 'Nothing logged yet. A theme\'s Lanecast.log(…) shows here.';
+    }
+    $('newTheme').onclick = async () => {
+        hideError(); const name = $('newThemeName').value.trim();
+        if (!name) { $('themeNote').textContent = 'Give the theme a name first.'; return; }
+        try { const id = await api.themes.create(name); await api.themes.select(id); $('newThemeName').value = ''; await refreshThemes(id); $('themeNote').textContent = `Made ${name} from the template and switched to it. Open the folder to edit it; changes show after Reload.`; }
+        catch (e) { $('themeNote').textContent = e.message.replace(/^Error invoking remote method '[^']+': (Error: )?/, ''); }
+    };
+    $('openThemes').onclick = async () => { try { const r = await api.themes.openFolder(); if (r) $('themeNote').textContent = r; } catch (e) { showError(e); } };
+    $('reloadThemes').onclick = () => { const id = themes.activeId; themes.activeId = null; refreshThemes(id); };
 
     // ---- display -------------------------------------------------------------------------
     const row = cells => {
@@ -314,7 +370,7 @@
             timer: connected('timer') && latest.blocks > 0 && !latest.stale,    // the console's clock is arriving
             events: rosters.heats > 0,                                          // start lists in hand
             cameras: camerasLive,                                               // a camera's picture is arriving
-            theme: false                                                        // not built yet
+            theme: !!themes.active && themes.ready.overlay                      // the theme's overlay is up
         };
         // Stream is idle or live, never simulated: its badge is Live, and only when on air (not built yet).
         const simulatedTab = { stream: false, timer: sim.timer, events: sim.events, cameras: sim.cameras, theme: false };
@@ -420,7 +476,7 @@
         const was = links[role].state; links[role] = state;
         if (role === 'timer') {
             if (state.state === 'open' && was !== 'open') { decoder = new CTS.Decoder(); latest = decoder.snapshot(0); timerStart = performance.now(); }
-            if (state.state !== 'open' && was === 'open') { latest = decoder.snapshot(Infinity); lastSent = ''; }
+            if (state.state !== 'open' && was === 'open') { latest = decoder.snapshot(Infinity); lastSent = ''; tracker.reset(); }
         } else if (state.state === 'open' && was !== 'open') parser.reset();
         if (state.state === 'error') showError(new Error(state.message));
         render();
@@ -554,6 +610,7 @@
         engine = await api.cameras.status();
         for (const role of ROLES) links[role] = await api.serial.state(role);
         await applySim(await api.sim.state(), true);
+        await refreshThemes();
         // Real ports that were connected when the app last closed are connected again.
         for (const role of ROLES) if (!sim[PART_OF[role]] && remembered[role] && ports[role].some(p => p.path === remembered[role]) && links[role].state === 'closed') connect(role, remembered[role]);
         setInterval(refreshPorts, 3000);

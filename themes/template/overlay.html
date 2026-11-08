@@ -1,0 +1,112 @@
+<!doctype html>
+<!--
+  Lanecast theme template — the OVERLAY.
+
+  This page is drawn over the program picture, transparent where you draw nothing. It is an
+  ordinary web page: HTML, CSS, JavaScript, images, fonts, anything in this folder. Lanecast
+  loads it in a frame the size of the picture (16:9), so size things in vh/vw and they scale
+  with the stream.
+
+  Everything you need comes from one script, ../lanecast-theme.js (Lanecast supplies it):
+
+    Lanecast.on('state', s => …)       the scoreboard, every time it changes (~10 times a second in a race)
+    Lanecast.on('heat.lineup', e => …) a heat is on the board, lined up
+    Lanecast.on('race.start', e => …)  the clock started
+    Lanecast.on('lane.split', e => …)  a lane showed a split
+    Lanecast.on('lane.finish', e => …) a lane got a place and a time
+    Lanecast.on('heat.finish', e => …) everyone with a name has finished (results are in e.results, by place)
+    Lanecast.on('event.finish', e => …)the last heat of the event finished
+    Lanecast.on('event.change', e => …)a new event is on the board
+    Lanecast.on('race.reset', e => …)  the clock went back to zero after a start (false start, recall)
+    Lanecast.on('control', m => …)     a message from this theme's control panel (control.html)
+    Lanecast.camera('Wide')            put a camera on the program, by name or id
+    Lanecast.layout({ x, y, w, h })    place the camera within the picture, as fractions 0–1 (default: fills it)
+
+  The full reference, with every field of every message, is docs/themes.md in the Lanecast
+  repository. If you are an AI assistant helping someone build a theme, read that file first.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Template — Lanecast theme</title>
+<style>
+/* Colours and fonts in one place: change these first. */
+:root { --accent: #ffcc33; --ink: #ffffff; --panel: rgba(0, 0, 0, .72); --font: system-ui, sans-serif; }
+html, body { margin: 0; height: 100%; background: transparent; overflow: hidden; font-family: var(--font); color: var(--ink); }
+
+/* The lower third. Positions are a share of the picture; sizes are in vh so they scale. */
+.bug { position: absolute; left: 4%; right: 4%; bottom: 6%; transition: opacity .4s, transform .4s; }
+.bug.hidden { opacity: 0; transform: translateY(3vh); }
+.title { display: flex; justify-content: space-between; align-items: baseline; background: var(--panel); border-bottom: .6vh solid var(--accent); padding: 1.2vh 2.4vh; }
+.title strong { font-size: 3.6vh; text-transform: uppercase; letter-spacing: .1vh; }
+.title span { font-size: 2.2vh; opacity: .85; }
+.clock { font: 700 5.6vh/1 ui-monospace, monospace; font-variant-numeric: tabular-nums; color: var(--accent); }
+.lanes { display: grid; grid-template-columns: 1fr 1fr; gap: .3vh; margin-top: .3vh; }
+.lane { display: grid; grid-template-columns: 4vh 1fr auto; gap: 1.5vh; background: var(--panel); padding: .7vh 2vh; font-size: 2.4vh; animation: slide .3s ease-out both; }
+.lane .place { font-weight: 800; color: var(--accent); }
+.lane .time { font-family: ui-monospace, monospace; font-variant-numeric: tabular-nums; }
+.lanes.hidden { display: none; }
+@keyframes slide { from { opacity: 0; transform: translateX(-2vh); } to { opacity: 1; transform: none; } }
+
+/* A full-screen moment for the end of a heat. */
+.moment { position: absolute; inset: 0; display: grid; place-items: center; background: rgba(0, 0, 0, .35); opacity: 0; transition: opacity .4s; pointer-events: none; }
+.moment.show { opacity: 1; }
+.moment div { background: var(--accent); color: #111; font-size: 7vh; font-weight: 900; padding: 2vh 6vh; border-radius: 1.5vh; letter-spacing: .3vh; text-transform: uppercase; }
+</style>
+</head>
+<body>
+<div class="bug hidden" id="bug">
+  <div class="title"><strong id="title">—</strong><span id="eh"></span><div class="clock" id="clock">0:00.0</div></div>
+  <div class="lanes" id="lanes"></div>
+</div>
+<div class="moment" id="moment"><div id="momentText"></div></div>
+
+<script src="../lanecast-theme.js"></script>
+<script>
+(() => {
+  const $ = id => document.getElementById(id);
+  let showLanes = true;                 // the control panel can hide the lane list
+
+  // 1. The scoreboard: redraw the lower third from the state.
+  Lanecast.on('state', s => {
+    $('bug').classList.toggle('hidden', !s.event);
+    if (!s.event) return;
+    $('title').textContent = s.title || `Event ${s.event}`;
+    $('eh').textContent = `Event ${s.event} · Heat ${s.heat}` + (s.heats ? ` of ${s.heats}` : '');
+    $('clock').textContent = s.clock || '0:00.0';
+    // Before the start: the lineup (lanes with a name). After: finishers by place.
+    const finished = s.lanes.filter(l => l.place).sort((a, b) => a.place - b.place);
+    const rows = (finished.length ? finished : s.lanes.filter(l => l.name)).map(l => {
+      const div = document.createElement('div'); div.className = 'lane';
+      div.innerHTML = `<span class="place"></span><span class="name"></span><span class="time"></span>`;
+      div.querySelector('.place').textContent = l.place ? Lanecast.ordinal(l.place) : l.lane;
+      div.querySelector('.name').textContent = l.name + (l.team ? '  ·  ' + l.team : '');
+      div.querySelector('.time').textContent = l.place ? l.time : '';
+      return div;
+    });
+    const key = rows.map(r => r.textContent).join('|');     // rebuild only when something changed, so the slide-in plays once
+    if (key !== $('lanes').dataset.key) { $('lanes').dataset.key = key; $('lanes').replaceChildren(...rows); }
+    $('lanes').classList.toggle('hidden', !showLanes);
+  });
+
+  // 2. Moments: react to what happened, not just what is showing.
+  const moment = (text, ms) => { $('momentText').textContent = text; $('moment').classList.add('show'); clearTimeout(moment.t); moment.t = setTimeout(() => $('moment').classList.remove('show'), ms); };
+  Lanecast.on('heat.finish', e => moment(`Heat ${e.heat} final · ${e.results[0]?.swimmer || ''} wins`, 4000));
+  Lanecast.on('event.finish', e => moment(`Event ${e.event} complete`, 5000));
+  Lanecast.on('race.start', () => $('moment').classList.remove('show'));
+
+  // 3. Directing the picture from the theme: a tight shot while racing, wide between heats.
+  //    Cameras are matched by name (as named on the Camera tab) or id; an unknown name is ignored.
+  Lanecast.on('race.start', () => Lanecast.camera('Finish'));
+  Lanecast.on('heat.finish', () => setTimeout(() => Lanecast.camera('Wide'), 6000));
+
+  // 4. The control panel (control.html) sends whatever messages you like; handle them here.
+  Lanecast.on('control', m => {
+    if (m.action === 'lanes') { showLanes = m.on; $('lanes').classList.toggle('hidden', !showLanes); }
+    if (m.action === 'moment') moment(m.text || 'Hello from the control panel', 3000);
+    if (m.action === 'pip') Lanecast.layout(m.on ? { x: .62, y: .05, w: .34, h: .34 } : { x: 0, y: 0, w: 1, h: 1 });
+  });
+})();
+</script>
+</body>
+</html>

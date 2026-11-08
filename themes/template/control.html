@@ -1,0 +1,56 @@
+<!doctype html>
+<!--
+  Lanecast theme template — the CONTROL PANEL.
+
+  Optional. If theme.json names a "control" page, Lanecast shows it in a box at the top of the
+  Stream tab, at the width and height theme.json asks for, so the person running the stream can
+  trigger things without leaving the picture. It is an ordinary page with the same runtime as
+  the overlay; it gets the same state and events, and it can talk to the overlay:
+
+    Lanecast.send({ anything })     arrives in the overlay as Lanecast.on('control', m => …)
+    Lanecast.on('overlay', m => …)  the overlay's Lanecast.send(...) arrives here
+    Lanecast.camera('Wide')         the panel can direct the picture too
+
+  Keep it small: the box is in the way of the picture.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Template — control panel</title>
+<style>
+html, body { margin: 0; background: transparent; font: 13px system-ui, sans-serif; color: #edf4fb; }
+.row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; padding: 6px 0; }
+button { background: #1e3041; border: 1px solid #3c5266; border-radius: 6px; color: #f4f8fc; font: 600 13px system-ui; padding: 9px 12px; cursor: pointer; }
+button[aria-pressed="true"] { background: #ffcc33; border-color: #ffcc33; color: #111; }
+.cams button { padding: 7px 10px; }
+.label { font-size: 10px; letter-spacing: 2px; color: #9aaec2; font-weight: 750; margin-right: 4px; }
+</style>
+</head>
+<body>
+<div class="row">
+  <span class="label">THEME</span>
+  <button id="lanes" aria-pressed="true">Lanes</button>
+  <button id="pip" aria-pressed="false">Picture in picture</button>
+  <button id="moment">Say hello</button>
+</div>
+<div class="row cams"><span class="label">CAMERA</span><span id="cams"></span></div>
+
+<script src="../lanecast-theme.js"></script>
+<script>
+(() => {
+  const $ = id => document.getElementById(id);
+  const toggle = (id, action) => $(id).onclick = () => { const on = $(id).getAttribute('aria-pressed') !== 'true'; $(id).setAttribute('aria-pressed', String(on)); Lanecast.send({ action, on }); };
+  toggle('lanes', 'lanes');
+  toggle('pip', 'pip');
+  $('moment').onclick = () => Lanecast.send({ action: 'moment', text: 'Hello from the control panel' });
+  // One button per camera, from the state; the one on the program is lit.
+  let shown = '';
+  Lanecast.on('state', s => {
+    const key = s.cameras.map(c => c.id + ':' + c.name).join('|') + '#' + s.camera;
+    if (key === shown) return; shown = key;
+    $('cams').replaceChildren(...s.cameras.map(c => { const b = document.createElement('button'); b.textContent = c.name; b.setAttribute('aria-pressed', String(c.id === s.camera)); b.onclick = () => Lanecast.camera(c.id); return b; }));
+  });
+})();
+</script>
+</body>
+</html>
