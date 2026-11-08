@@ -12,15 +12,14 @@
     const listeners = {};
     const on = (name, callback) => { (listeners[name] ||= []).push(callback); return () => { listeners[name] = listeners[name].filter(f => f !== callback); }; };
     const emit = (name, ...args) => { for (const f of listeners[name] || []) f(...args); };
-    const PARTS = ['timer', 'events', 'cameras'];
+    const PARTS = ['timer', 'events'];
     const SIM_PORT = { path: 'sim:timer', label: 'Simulated timing console' };
-    const sim = JSON.parse(localStorage.getItem('lanecast-mock:simulate') || '{"timer":true,"events":true,"cameras":true}');
-    let media = null;
+    const sim = JSON.parse(localStorage.getItem('lanecast-mock:simulate') || '{"timer":true,"events":true}');
     const epoch = performance.now(), console_ = new Sim.TimerSource();
     const ports = { timer: { state: 'closed', message: '', path: null, stop: null }, meet: { state: 'closed', message: '', path: null, stop: null } };
     const state = role => ({ state: ports[role].state, message: ports[role].message, path: ports[role].path });
     const setState = (role, s, message, path) => { Object.assign(ports[role], { state: s, message, path }); emit('serial:state', role, state(role)); };
-    const simState = () => ({ ...sim, media, ...console_.status() });
+    const simState = () => ({ ...sim, ...console_.status() });
     const cameras = JSON.parse(localStorage.getItem('lanecast-mock:cameras') || '[]');
     const saveCameras = () => localStorage.setItem('lanecast-mock:cameras', JSON.stringify(cameras));
 
@@ -53,26 +52,25 @@
             race: async onNow => { console_.race(onNow); return simState(); },
             run: async (onNow, event, heat) => { console_.run(onNow, event, heat); return simState(); },
             schedule: async meet => { console_.setMeet(meet); return simState(); },
-            /** A photo or video from this machine, through the browser's own picker. */
-            chooseMedia: () => new Promise(resolve => {
-                const input = document.createElement('input'); input.type = 'file'; input.accept = 'image/*,video/*';
-                input.onchange = () => {
-                    const file = input.files[0];
-                    if (file) { media = { name: file.name, kind: file.type.startsWith('video/') ? 'video' : 'image', url: URL.createObjectURL(file) }; emit('sim:changed', simState()); }
-                    resolve(media);
-                };
-                input.oncancel = () => resolve(media);
-                input.click();
-            }),
-            clearMedia: async () => { media = null; emit('sim:changed', simState()); return null; },
             onChange: cb => on('sim:changed', cb)
         },
         relay: { sent: 0, status: async () => ({ port: 8080, listening: true, clients: 1, sent: window.lanecast.relay.sent, error: '', hosts: ['192.168.1.20'] }), send: () => { window.lanecast.relay.sent++; }, onStatus: cb => on('relay:status', cb) },
         cameras: {
             status: async () => ({ running: true, error: '', api: '', version: 'design mode', installed: true, ffmpeg: true, log: [] }),
-            list: async () => cameras.map(c => ({ ...c, producers: 1, consumers: 1 })),
-            add: async ({ name, url }) => { if (!url) throw new Error('Enter the camera’s address'); const camera = { id: 'cam-' + Date.now().toString(36), name: name || `Camera ${cameras.length + 1}`, url }; cameras.push(camera); saveCameras(); return camera; },
+            list: async () => cameras.map(c => ({ ...c, local: /^device:/.test(c.url), producers: 1, consumers: 1 })),
+            add: async ({ name, url, simulate }) => { url = url || ''; if (!url && !simulate) throw new Error('Enter the camera’s address, or add it as simulated'); const camera = { id: 'cam-' + Date.now().toString(36), name: name || `Camera ${cameras.length + 1}`, url, simulate: !!simulate, media: null }; cameras.push(camera); saveCameras(); return camera; },
+            update: async (id, patch) => { const c = cameras.find(x => x.id === id); if (!c) throw new Error('No such camera'); if (patch.name !== undefined) c.name = String(patch.name).trim() || c.name; if (patch.url !== undefined) c.url = String(patch.url).trim(); if (patch.simulate !== undefined) c.simulate = !!patch.simulate; if (!c.url && !c.simulate) c.simulate = true; saveCameras(); return c; },
             remove: async id => { const i = cameras.findIndex(c => c.id === id); if (i >= 0) { cameras.splice(i, 1); saveCameras(); } },
+            /** A photo or video from this machine, through the browser's own picker; kept for this page load only. */
+            chooseMedia: id => new Promise(resolve => {
+                const c = cameras.find(x => x.id === id); if (!c) { resolve(null); return; }
+                const input = document.createElement('input'); input.type = 'file'; input.accept = 'image/*,video/*';
+                input.onchange = () => { const file = input.files[0]; if (file) c.media = { name: file.name, kind: file.type.startsWith('video/') ? 'video' : 'image', url: URL.createObjectURL(file), version: Date.now() }; resolve(c); };
+                input.oncancel = () => resolve(c);
+                input.click();
+            }),
+            clearMedia: async id => { const c = cameras.find(x => x.id === id); if (c) c.media = null; return c; },
+            mediaBytes: async () => null,
             onStatus: cb => on('cameras:status', cb),
             /** Design mode only: a "real" camera added here shows a drawn test card. */
             mockStream: (() => {

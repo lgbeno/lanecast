@@ -20,9 +20,8 @@
     let lastSent = '', lastSendAt = 0, packets = 0, lastPacketAt = null;
     let relay = { port: 0, listening: false, clients: 0, sent: 0, error: '', hosts: [] };
     // Simulation, part by part: the timer, the meet data, the cameras.
-    let sim = { timer: false, events: false, cameras: false, event: null, heat: null, running: false, racing: false, media: null };
+    let sim = { timer: false, events: false, event: null, heat: null, running: false, racing: false };
     const PART_OF = { timer: 'timer', meet: 'events' };            // which part each port role belongs to
-    const anySim = () => sim.timer || sim.events || sim.cameras;
     let ports = { timer: [], meet: [] }, remembered = {};
     const links = { timer: { state: 'closed', message: '', path: null }, meet: { state: 'closed', message: '', path: null } };
     const connected = role => links[role].state === 'open';
@@ -139,54 +138,49 @@
     }
 
     // ---- cameras -------------------------------------------------------------------------
-    const SIM_CAMERA = 'cam-sim';
+    // Each camera has its own switch: the real picture, or a stand-in photo or video while simulated.
     let engine = { running: false, error: '', api: '', version: '', installed: false, ffmpeg: false };
-    let cameraList = [];                 // [{ id, name, url, producers, consumers }]
+    let cameraList = [];                 // [{ id, name, url, simulate, local, media, producers, consumers }]
     const players = new Map();           // id -> Player
-    /** The simulated camera: a photo or video from the camera's view, as a video stream. */
-    class SimCamera {
+    const anyCameraSimulated = () => cameraList.some(c => c.simulate);
+    /** A simulated camera's picture: its stand-in, drawn onto a canvas and captured as a video stream. */
+    class StandIn {
         constructor() {
             this.canvas = document.createElement('canvas'); this.canvas.width = 1280; this.canvas.height = 720;
-            this.ctx = this.canvas.getContext('2d'); this.media = null; this.element = null; this.url = null; this.stream = this.canvas.captureStream(30);
+            this.ctx = this.canvas.getContext('2d'); this.key = null; this.element = null; this.url = null; this.stream = this.canvas.captureStream(30);
             const draw = () => { this.draw(); requestAnimationFrame(draw); }; draw();
         }
-        setMedia(media) {
-            if (JSON.stringify(media) === JSON.stringify(this.media)) return;
-            this.media = media; this.element = null;
+        /** Load the camera's stand-in if it changed. The bytes come from the main process as a same-origin blob, so the canvas stays untainted. */
+        setMedia(camera) {
+            const key = camera.media ? `${camera.id}:${camera.media.version}` : `${camera.id}:none`;
+            if (key === this.key) return;
+            this.key = key; this.element = null;
             if (this.url) { URL.revokeObjectURL(this.url); this.url = null; }
-            if (!media) return;
-            // The file's bytes come from the main process and become a same-origin blob, so the canvas stays untainted and keeps streaming.
+            if (!camera.media) return;
             const show = url => {
-                if (this.media !== media) return;
+                if (this.key !== key) return;
                 this.url = url;
-                if (media.kind === 'video') { const v = document.createElement('video'); v.src = url; v.muted = true; v.loop = true; v.playsInline = true; v.play().catch(() => {}); this.element = v; }
+                if (camera.media.kind === 'video') { const v = document.createElement('video'); v.src = url; v.muted = true; v.loop = true; v.playsInline = true; v.play().catch(() => {}); this.element = v; }
                 else { const img = new Image(); img.src = url; this.element = img; }
             };
-            if (media.url) show(media.url);                                            // design mode hands a blob URL straight over
-            else api.sim.mediaBytes().then(file => { if (file) show(URL.createObjectURL(new Blob([file.bytes], { type: file.mime }))); }).catch(e => showError(e));
+            if (camera.media.url) show(camera.media.url);                                           // design mode hands a blob URL straight over
+            else api.cameras.mediaBytes(camera.id).then(file => { if (file) show(URL.createObjectURL(new Blob([file.bytes], { type: file.mime }))); }).catch(e => showError(e));
         }
         draw() {
             const { ctx, canvas } = this, W = canvas.width, H = canvas.height, el = this.element;
             const w = el && (el.videoWidth || el.naturalWidth), h = el && (el.videoHeight || el.naturalHeight);
-            if (el && w && h) {
-                const scale = Math.max(W / w, H / h), dw = w * scale, dh = h * scale;        // cover, as a camera would fill the frame
-                ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, H);
-                ctx.drawImage(el, (W - dw) / 2, (H - dh) / 2, dw, dh);
-                return;
-            }
-            // Nothing chosen yet: black. The stage says what to do.
             ctx.fillStyle = '#060a0f'; ctx.fillRect(0, 0, W, H);
+            if (el && w && h) { const scale = Math.max(W / w, H / h), dw = w * scale, dh = h * scale; ctx.drawImage(el, (W - dw) / 2, (H - dh) / 2, dw, dh); }   // cover, as a camera fills its frame
         }
-        /** A photo or video is loaded and has a size: the stream shows something real. */
         get hasPicture() { const el = this.element; return !!(el && (el.videoWidth || el.naturalWidth)); }
     }
-    let simCamera = null;
-    /** One camera's picture, pulled from the engine over WebRTC (WHEP). Reconnects by itself. */
+    /** One camera's picture: the stand-in while simulated; else a device on this computer, or the engine over WebRTC. Reconnects by itself. */
     class Player {
-        constructor(camera, video) { this.id = camera.id; this.camera = camera; this.video = video; this.pc = null; this.stream = null; this.timer = null; this.stopped = false; this.frames = 0; this.frameAt = 0; this.startedAt = performance.now(); this.start(); }
+        constructor(camera, video) { this.id = camera.id; this.camera = camera; this.video = video; this.pc = null; this.stream = null; this.standIn = null; this.timer = null; this.stopped = false; this.frames = 0; this.frameAt = 0; this.startedAt = performance.now(); this.start(); }
         async start() {
             if (this.stopped) return;
-            if (this.id === SIM_CAMERA) { this.video.srcObject = (simCamera ||= new SimCamera()).stream; return; }
+            if (this.camera.simulate) { this.standIn ||= new StandIn(); this.standIn.setMedia(this.camera); this.video.srcObject = this.standIn.stream; return; }
+            if (!this.camera.url) return;
             if (this.camera.url.startsWith('device:')) {
                 // A camera on this computer: a webcam, a capture card, an iPhone. Opened by device id, 1080p if it can.
                 try {
@@ -194,7 +188,7 @@
                     const access = api.cameras.access ? await api.cameras.access() : 'granted';     // macOS asks the person the first time
                     if (access !== 'granted') throw Object.assign(new Error('camera access was refused'), { name: 'NotAllowedError' });
                     this.stream = await navigator.mediaDevices.getUserMedia({ video: { deviceId: { exact: deviceId }, width: { ideal: 1920 }, height: { ideal: 1080 }, frameRate: { ideal: 30 } }, audio: false });
-                    if (this.stopped) { this.stream.getTracks().forEach(t => t.stop()); return; }
+                    if (this.stopped || this.camera.simulate) { this.stream.getTracks().forEach(t => t.stop()); return; }
                     this.video.srcObject = this.stream;
                     this.stream.getVideoTracks()[0].onended = () => this.later();                // unplugged: try again until it is back
                 } catch (e) { this.error = e.name === 'NotAllowedError' ? 'camera access was refused · allow Lanecast in System Settings → Privacy → Camera' : e.name === 'NotFoundError' || e.name === 'OverconstrainedError' ? 'not plugged in' : e.message; this.later(); }
@@ -214,54 +208,87 @@
                 if (this.pc === pc) await pc.setRemoteDescription({ type: 'answer', sdp: await res.text() });
             } catch (e) { if (this.pc === pc) this.later(); }
         }
+        /** The camera's record changed: a new name is just shown; a new switch, address or stand-in restarts the picture. */
+        update(camera) {
+            const restart = camera.simulate !== this.camera.simulate || camera.url !== this.camera.url || (camera.media?.version || 0) !== (this.camera.media?.version || 0);
+            this.camera = camera;
+            if (restart) { clearTimeout(this.timer); this.close(); this.frames = 0; this.frameAt = 0; this.startedAt = performance.now(); this.video.srcObject = null; this.start(); }
+        }
         later() { clearTimeout(this.timer); this.timer = setTimeout(() => this.start(), 2000); }
         close() { if (this.pc) { this.pc.onconnectionstatechange = null; this.pc.close(); this.pc = null; } if (this.stream) { this.stream.getTracks().forEach(t => t.stop()); this.stream = null; } }
         stop() { this.stopped = true; clearTimeout(this.timer); this.close(); this.video.srcObject = null; }
-        /** Frames are still arriving. */
+        /** Frames are still arriving, and for a simulated camera there is a stand-in to show. */
         get live() {
             const q = this.video.getVideoPlaybackQuality ? this.video.getVideoPlaybackQuality().totalVideoFrames : 0, now = performance.now();
             if (q > this.frames) { this.frames = q; this.frameAt = now; }
-            return this.frames > 0 && now - this.frameAt < 2000 && this.video.videoWidth > 0;
+            return this.frames > 0 && now - this.frameAt < 2000 && this.video.videoWidth > 0 && (!this.camera.simulate || !!this.standIn?.hasPicture);
         }
     }
     const tileFor = camera => {
         const figure = document.createElement('figure'); figure.className = 'tile'; figure.dataset.id = camera.id;
         const video = document.createElement('video'); video.autoplay = true; video.muted = true; video.playsInline = true;
-        const caption = document.createElement('figcaption'), name = document.createElement('strong'), status = document.createElement('span');
-        name.textContent = camera.name; status.className = 'small'; status.textContent = 'Connecting…';
-        caption.append(name, status);
-        if (camera.id !== SIM_CAMERA) {
-            const remove = document.createElement('button');
-            remove.className = 'quiet'; remove.type = 'button'; remove.textContent = 'Remove'; remove.title = camera.url;
-            remove.onclick = async () => { remove.disabled = true; try { await api.cameras.remove(camera.id); } catch (e) { showError(e); } await refreshCameras(); };
-            caption.append(remove);
-        }
-        figure.append(video, caption);
+        const caption = document.createElement('figcaption'), name = document.createElement('strong'), badge = document.createElement('b'), status = document.createElement('span');
+        name.className = 'name'; badge.className = 'sim-badge'; badge.textContent = 'Sim'; status.className = 'small';
+        const sw = document.createElement('label'); sw.className = 'switch'; sw.title = 'Show the stand-in instead of the real picture';
+        const box = document.createElement('input'); box.type = 'checkbox'; box.className = 'camSim'; const knob = document.createElement('span');
+        sw.append(box, knob, document.createTextNode('Simulate'));
+        box.onchange = async () => { try { await api.cameras.update(camera.id, { simulate: box.checked }); } catch (e) { showError(e); } await refreshCameras(); };
+        const gear = document.createElement('button'); gear.type = 'button'; gear.className = 'gear'; gear.textContent = 'Settings'; gear.title = 'Name, address, simulation and stand-in';
+        gear.onclick = () => openCameraDialog(camera.id);
+        caption.append(name, badge, status, sw, gear); figure.append(video, caption);
         players.set(camera.id, new Player(camera, video));
         return figure;
     };
     async function refreshCameras() {
-        let real = [];
-        try { real = await api.cameras.list(); } catch (e) { real = []; }
-        cameraList = (sim.cameras ? [{ id: SIM_CAMERA, name: 'Simulated camera', url: 'sim:' + (sim.media ? sim.media.name : '') }] : []).concat(real);
+        try { cameraList = await api.cameras.list(); } catch (e) { cameraList = []; }
         const list = $('cameraList'), have = new Set(cameraList.map(c => c.id));
         for (const figure of [...list.children]) if (!have.has(figure.dataset.id)) { players.get(figure.dataset.id)?.stop(); players.delete(figure.dataset.id); figure.remove(); }
-        for (const camera of cameraList) if (!players.has(camera.id) && (camera.id === SIM_CAMERA || engine.running)) list.append(tileFor(camera));
+        for (const camera of cameraList) {
+            if (players.has(camera.id)) players.get(camera.id).update(camera);
+            else list.append(tileFor(camera));
+        }
         const select = $('programCamera'), current = programCameraId();
         select.replaceChildren(...cameraList.map(c => new Option(c.name, c.id)));
         if (!cameraList.length) select.append(new Option('No cameras yet', ''));
         if (current) select.value = current;
+        if ($('cameraDialog').open && dialogCamera) fillCameraDialog(cameraList.find(c => c.id === dialogCamera) || null);
         render();
     }
-    async function addCamera() {
+    async function addCamera(simulated = false) {
         hideError(); $('camAddButton').disabled = true; $('camAddStatus').textContent = 'Adding…';
         try {
-            const camera = await api.cameras.add({ name: $('camName').value, url: $('camUrl').value });
+            const camera = await api.cameras.add(simulated ? { name: $('camName').value || 'Simulated camera', url: '', simulate: true } : { name: $('camName').value, url: $('camUrl').value });
             $('camName').value = ''; $('camUrl').value = ''; $('camAddStatus').textContent = `Added ${camera.name}.`;
             await refreshCameras();
+            if (simulated) openCameraDialog(camera.id);
         } catch (e) { $('camAddStatus').textContent = e.message.replace(/^Error invoking remote method '[^']+': (Error: )?/, ''); }
         $('camAddButton').disabled = false;
     }
+    // The camera's settings dialog: name, address, the simulate switch, the stand-in, and removal.
+    let dialogCamera = null;
+    function fillCameraDialog(camera) {
+        if (!camera) { $('cameraDialog').close(); return; }
+        $('cameraDialogTitle').textContent = camera.name;
+        if (document.activeElement !== $('cdName')) $('cdName').value = camera.name;
+        $('cdUrlField').hidden = camera.local;
+        if (document.activeElement !== $('cdUrl')) $('cdUrl').value = camera.local ? '' : camera.url;
+        $('cdSource').textContent = camera.local ? 'A camera on this computer.' : camera.url ? '' : 'No address: this camera is a stand-in only until one is set.';
+        $('cdSimulate').checked = camera.simulate; $('cdSimulate').disabled = !camera.url;
+        $('cdMedia').textContent = camera.media ? `${camera.media.kind === 'video' ? 'Video' : 'Photo'}: ${camera.media.name}` : 'None yet.';
+        $('cdClearMedia').disabled = !camera.media;
+    }
+    function openCameraDialog(id) { dialogCamera = id; fillCameraDialog(cameraList.find(c => c.id === id) || null); if (dialogCamera) $('cameraDialog').showModal(); }
+    $('cdSave').onclick = async () => {
+        hideError();
+        try { await api.cameras.update(dialogCamera, { name: $('cdName').value, url: $('cdUrlField').hidden ? undefined : $('cdUrl').value, simulate: $('cdSimulate').checked }); $('cameraDialog').close(); }
+        catch (e) { showError(e); }
+        await refreshCameras();
+    };
+    $('cdCancel').onclick = () => $('cameraDialog').close();
+    $('cdChoose').onclick = async () => { hideError(); try { await api.cameras.chooseMedia(dialogCamera); } catch (e) { showError(e); } await refreshCameras(); };
+    $('cdClearMedia').onclick = async () => { hideError(); try { await api.cameras.clearMedia(dialogCamera); } catch (e) { showError(e); } await refreshCameras(); };
+    $('cdRemove').onclick = async () => { hideError(); try { await api.cameras.remove(dialogCamera); } catch (e) { showError(e); } $('cameraDialog').close(); await refreshCameras(); };
+    $('cameraDialog').addEventListener('close', () => { dialogCamera = null; });
     /** Cameras attached to this computer. Labels only show once the camera has been allowed, so Find cameras asks once. */
     let devices = [], devicesAsked = false;
     async function refreshDevices(ask = false) {
@@ -296,19 +323,22 @@
     if (navigator.mediaDevices) navigator.mediaDevices.addEventListener('devicechange', () => refreshDevices(false));
     function renderCameras() {
         $('engineStatus').textContent = !engine.installed ? 'The camera engine (go2rtc) is not in this build.' : engine.error ? `Camera engine · ${engine.error}`
-            : !engine.running ? 'Starting the camera engine…' : `Camera engine running${engine.version ? ' · go2rtc ' + engine.version : ''}${engine.ffmpeg ? '' : ' · ffmpeg not found, so cameras must send H.264'}`;
+            : !engine.running ? 'Starting the camera engine…' : `Camera engine running${engine.version ? ' · go2rtc ' + engine.version : ''}${engine.ffmpeg ? '' : ' · ffmpeg not found, so network cameras must send H.264'}`;
         $('noCameras').hidden = cameraList.length > 0;
-        $('camSim').hidden = !sim.cameras; $('camAdd').hidden = sim.cameras;
-        $('mediaName').textContent = sim.media ? `${sim.media.kind === 'video' ? 'Video' : 'Photo'}: ${sim.media.name}` : 'No photo or video chosen.';
-        $('clearMedia').disabled = !sim.media;
-        if (simCamera) simCamera.setMedia(sim.cameras ? sim.media : null);
         let live = 0;
         for (const figure of $('cameraList').children) {
-            const player = players.get(figure.dataset.id), status = figure.querySelector('.small');
-            if (!player) continue;
-            const v = player.video, isSim = player.id === SIM_CAMERA;
-            if (player.live && (!isSim || simCamera?.hasPicture)) { live++; status.textContent = `Live · ${v.videoWidth}×${v.videoHeight}`; status.className = 'small live'; }
-            else { status.className = 'small'; status.textContent = isSim ? (sim.media ? 'Loading…' : 'No photo or video chosen') : performance.now() - player.startedAt < 8000 ? 'Connecting…' : player.camera.url.startsWith('device:') ? `No picture · ${player.error || 'is it plugged in and unlocked?'}` : 'No video yet · check the address, and that the camera sends H.264'; }
+            const player = players.get(figure.dataset.id); if (!player) continue;
+            const c = player.camera, v = player.video, status = figure.querySelector('.small');
+            figure.querySelector('.name').textContent = c.name;
+            figure.querySelector('.sim-badge').hidden = !c.simulate;
+            const box = figure.querySelector('.camSim'); if (box.checked !== c.simulate) box.checked = c.simulate; box.disabled = !c.url;
+            if (player.live) { live++; status.textContent = `${c.simulate ? 'Stand-in' : 'Live'} · ${v.videoWidth}×${v.videoHeight}`; status.className = 'small live'; }
+            else {
+                status.className = 'small';
+                status.textContent = c.simulate ? (c.media ? 'Loading the stand-in…' : 'No stand-in yet · Settings to choose a photo or video')
+                    : performance.now() - player.startedAt < 8000 ? 'Connecting…'
+                    : c.url.startsWith('device:') ? `No picture · ${player.error || 'is it plugged in and unlocked?'}` : 'No video yet · check the address, and that the camera sends H.264';
+            }
         }
         return live > 0;
     }
@@ -322,9 +352,9 @@
         const id = programCameraId(), player = id ? players.get(id) : null, video = $('programVideo');
         const source = player?.video.srcObject || null;
         if (video.srcObject !== source) video.srcObject = source;
-        const picture = !!player?.live && (id !== SIM_CAMERA || !!simCamera?.hasPicture);
+        const picture = !!player?.live;
         $('stageNote').hidden = picture;
-        $('stageNote').textContent = !cameraList.length ? 'No camera. Add one on the Camera tab.' : id === SIM_CAMERA && !sim.media ? 'Simulated camera · choose a photo or video on the Camera tab' : 'Waiting for the camera…';
+        $('stageNote').textContent = !cameraList.length ? 'No camera. Add one on the Camera tab.' : player?.camera.simulate && !player.camera.media ? `${player.camera.name} is simulated · choose its stand-in photo or video in its settings on the Camera tab` : 'Waiting for the camera…';
         $('goLive').disabled = true; $('goLive').title = 'Streaming out is not built yet';
         $('programStatus').textContent = live ? 'Live' : picture ? 'Idle · program ready' : 'Idle';
         return picture;
@@ -444,7 +474,7 @@
             theme: !!themes.active && themes.ready.overlay                      // the theme's overlay is up
         };
         // Stream is idle or live, never simulated: its badge is Live, and only when on air (not built yet).
-        const simulatedTab = { stream: false, timer: sim.timer, events: sim.events, cameras: sim.cameras, theme: false };
+        const simulatedTab = { stream: false, timer: sim.timer, events: sim.events, cameras: anyCameraSimulated(), theme: false };
         for (const name of TABS) {
             const button = $('tab-' + name);
             button.firstElementChild.dataset.ready = String(ready[name]);
@@ -569,7 +599,7 @@
         }
         if (changed('events') && sim.events && connected('meet')) await api.serial.close('meet');
         if (changed('events') && !sim.events && !first && remembered.meet && ports.meet.some(p => p.path === remembered.meet)) connect('meet', remembered.meet);
-        if (changed('cameras') || first) await refreshCameras();
+        if (first) await refreshCameras();
         render(); fitStage();
     }
     for (const toggle of document.querySelectorAll('.simToggle')) toggle.addEventListener('change', async e => {
@@ -590,8 +620,6 @@
     $('simHeatNo').onchange = e => { const n = Math.floor(Number(e.target.value)); if (n >= 1) simCall(api.sim.control(simEvent(), n)); else render(); };
     $('simRun').onclick = () => simCall(api.sim.run(!sim.running, simEvent(), simHeat()));
     $('fetchSim').onclick = fetchSimulatedEvents;
-    $('chooseMedia').onclick = async () => { hideError(); try { await api.sim.chooseMedia(); } catch (e) { showError(e); } };
-    $('clearMedia').onclick = async () => { hideError(); try { await api.sim.clearMedia(); } catch (e) { showError(e); } };
 
     // ---- fit ------------------------------------------------------------------------------
     /** The stage fills what is left under the top bar beside the drawer, 16:9; the drawer is as tall as the stage. Nothing scrolls. */
@@ -646,8 +674,9 @@
     $('configure').onclick = () => { $('configureDialog').showModal(); render(); };
     $('packetJson').parentElement.addEventListener('toggle', render);
     $('programCamera').onchange = e => { programCamera = e.target.value || null; api.store.set('programCamera', programCamera).catch(() => {}); render(); };
-    $('camAddButton').onclick = addCamera;
-    $('camUrl').addEventListener('keydown', e => { if (e.key === 'Enter') addCamera(); });
+    $('camAddButton').onclick = () => addCamera(false);
+    $('camAddSim').onclick = () => addCamera(true);
+    $('camUrl').addEventListener('keydown', e => { if (e.key === 'Enter') addCamera(false); });
     api.cameras.onStatus(state => { const wasRunning = engine.running; engine = state; if (engine.running && !wasRunning) refreshCameras(); else render(); });
     $('loadFiles').onclick = loadStartLists;
     $('saveFiles').onclick = saveStartLists;

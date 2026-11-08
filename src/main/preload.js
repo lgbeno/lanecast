@@ -22,9 +22,6 @@ contextBridge.exposeInMainWorld('lanecast', {
         race: on => invoke('sim:race', on),
         run: (on, event, heat) => invoke('sim:run', on, event, heat),
         schedule: meet => invoke('sim:schedule', meet),
-        chooseMedia: () => invoke('sim:chooseMedia'),
-        clearMedia: () => invoke('sim:clearMedia'),
-        mediaBytes: () => invoke('sim:mediaBytes'),
         onChange: callback => on('sim:changed', callback)
     },
     relay: {
@@ -37,7 +34,11 @@ contextBridge.exposeInMainWorld('lanecast', {
         access: () => invoke('cameras:access'),
         list: () => invoke('cameras:list'),
         add: camera => invoke('cameras:add', camera),
+        update: (id, patch) => invoke('cameras:update', id, patch),
         remove: id => invoke('cameras:remove', id),
+        chooseMedia: id => invoke('cameras:chooseMedia', id),
+        clearMedia: id => invoke('cameras:clearMedia', id),
+        mediaBytes: id => invoke('cameras:mediaBytes', id),
         onStatus: callback => on('cameras:status', callback)
     },
     themes: {
