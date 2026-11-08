@@ -183,10 +183,23 @@
     let simCamera = null;
     /** One camera's picture, pulled from the engine over WebRTC (WHEP). Reconnects by itself. */
     class Player {
-        constructor(id, video) { this.id = id; this.video = video; this.pc = null; this.timer = null; this.stopped = false; this.frames = 0; this.frameAt = 0; this.startedAt = performance.now(); this.start(); }
+        constructor(camera, video) { this.id = camera.id; this.camera = camera; this.video = video; this.pc = null; this.stream = null; this.timer = null; this.stopped = false; this.frames = 0; this.frameAt = 0; this.startedAt = performance.now(); this.start(); }
         async start() {
             if (this.stopped) return;
             if (this.id === SIM_CAMERA) { this.video.srcObject = (simCamera ||= new SimCamera()).stream; return; }
+            if (this.camera.url.startsWith('device:')) {
+                // A camera on this computer: a webcam, a capture card, an iPhone. Opened by device id, 1080p if it can.
+                try {
+                    const deviceId = this.camera.url.slice(7);
+                    const access = api.cameras.access ? await api.cameras.access() : 'granted';     // macOS asks the person the first time
+                    if (access !== 'granted') throw Object.assign(new Error('camera access was refused'), { name: 'NotAllowedError' });
+                    this.stream = await navigator.mediaDevices.getUserMedia({ video: { deviceId: { exact: deviceId }, width: { ideal: 1920 }, height: { ideal: 1080 }, frameRate: { ideal: 30 } }, audio: false });
+                    if (this.stopped) { this.stream.getTracks().forEach(t => t.stop()); return; }
+                    this.video.srcObject = this.stream;
+                    this.stream.getVideoTracks()[0].onended = () => this.later();                // unplugged: try again until it is back
+                } catch (e) { this.error = e.name === 'NotAllowedError' ? 'camera access was refused · allow Lanecast in System Settings → Privacy → Camera' : e.name === 'NotFoundError' || e.name === 'OverconstrainedError' ? 'not plugged in' : e.message; this.later(); }
+                return;
+            }
             if (api.cameras.mockStream) { this.video.srcObject = api.cameras.mockStream(this.id); return; }     // design mode
             this.close();
             const pc = this.pc = new RTCPeerConnection({ iceServers: [] });
@@ -202,7 +215,7 @@
             } catch (e) { if (this.pc === pc) this.later(); }
         }
         later() { clearTimeout(this.timer); this.timer = setTimeout(() => this.start(), 2000); }
-        close() { if (this.pc) { this.pc.onconnectionstatechange = null; this.pc.close(); this.pc = null; } }
+        close() { if (this.pc) { this.pc.onconnectionstatechange = null; this.pc.close(); this.pc = null; } if (this.stream) { this.stream.getTracks().forEach(t => t.stop()); this.stream = null; } }
         stop() { this.stopped = true; clearTimeout(this.timer); this.close(); this.video.srcObject = null; }
         /** Frames are still arriving. */
         get live() {
@@ -224,13 +237,13 @@
             caption.append(remove);
         }
         figure.append(video, caption);
-        players.set(camera.id, new Player(camera.id, video));
+        players.set(camera.id, new Player(camera, video));
         return figure;
     };
     async function refreshCameras() {
         let real = [];
         try { real = await api.cameras.list(); } catch (e) { real = []; }
-        cameraList = (sim.cameras ? [{ id: SIM_CAMERA, name: 'Simulated camera', url: sim.media ? sim.media.name : '' }] : []).concat(real);
+        cameraList = (sim.cameras ? [{ id: SIM_CAMERA, name: 'Simulated camera', url: 'sim:' + (sim.media ? sim.media.name : '') }] : []).concat(real);
         const list = $('cameraList'), have = new Set(cameraList.map(c => c.id));
         for (const figure of [...list.children]) if (!have.has(figure.dataset.id)) { players.get(figure.dataset.id)?.stop(); players.delete(figure.dataset.id); figure.remove(); }
         for (const camera of cameraList) if (!players.has(camera.id) && (camera.id === SIM_CAMERA || engine.running)) list.append(tileFor(camera));
@@ -249,6 +262,38 @@
         } catch (e) { $('camAddStatus').textContent = e.message.replace(/^Error invoking remote method '[^']+': (Error: )?/, ''); }
         $('camAddButton').disabled = false;
     }
+    /** Cameras attached to this computer. Labels only show once the camera has been allowed, so Find cameras asks once. */
+    let devices = [], devicesAsked = false;
+    async function refreshDevices(ask = false) {
+        if (!navigator.mediaDevices?.enumerateDevices) { $('deviceNote').textContent = 'Not available here.'; return; }
+        try {
+            if (ask && !devicesAsked) {
+                devicesAsked = true;
+                try {
+                    const access = api.cameras.access ? await api.cameras.access() : 'granted';
+                    if (access !== 'granted') throw Object.assign(new Error('refused'), { name: 'NotAllowedError' });
+                    const s = await navigator.mediaDevices.getUserMedia({ video: true, audio: false }); s.getTracks().forEach(t => t.stop());
+                }
+                catch (e) { $('deviceNote').textContent = e.name === 'NotAllowedError' ? 'Camera access was refused. Allow it in System Settings → Privacy → Camera.' : e.name === 'NotFoundError' ? 'No camera found on this computer.' : e.message; }
+            }
+            devices = (await navigator.mediaDevices.enumerateDevices()).filter(d => d.kind === 'videoinput');
+        } catch (e) { devices = []; $('deviceNote').textContent = e.message; }
+        const added = new Set(cameraList.map(c => c.url));
+        $('deviceList').replaceChildren(...devices.map((d, i) => {
+            const row = document.createElement('div'); row.className = 'device';
+            const label = document.createElement('span'); label.textContent = d.label || `Camera ${i + 1}`;
+            const add = document.createElement('button'); add.type = 'button';
+            const url = 'device:' + d.deviceId, have = added.has(url);
+            add.textContent = have ? 'Added' : 'Add'; add.disabled = have || !d.deviceId;
+            add.onclick = async () => { add.disabled = true; try { await api.cameras.add({ name: d.label || `Camera ${i + 1}`, url }); await refreshCameras(); await refreshDevices(); } catch (e) { showError(e); add.disabled = false; } };
+            row.append(label, add); return row;
+        }));
+        if (!devices.length) { const none = document.createElement('p'); none.className = 'small'; none.textContent = devicesAsked ? 'No cameras found on this computer.' : 'Press Find cameras to look.'; $('deviceList').replaceChildren(none); }
+        else if (!devices.some(d => d.label)) $('deviceNote').textContent = 'Press Find cameras to see their names.';
+        else if (!$('deviceNote').textContent.startsWith('Camera access')) $('deviceNote').textContent = '';
+    }
+    $('findDevices').onclick = () => refreshDevices(true);
+    if (navigator.mediaDevices) navigator.mediaDevices.addEventListener('devicechange', () => refreshDevices(false));
     function renderCameras() {
         $('engineStatus').textContent = !engine.installed ? 'The camera engine (go2rtc) is not in this build.' : engine.error ? `Camera engine · ${engine.error}`
             : !engine.running ? 'Starting the camera engine…' : `Camera engine running${engine.version ? ' · go2rtc ' + engine.version : ''}${engine.ffmpeg ? '' : ' · ffmpeg not found, so cameras must send H.264'}`;
@@ -263,7 +308,7 @@
             if (!player) continue;
             const v = player.video, isSim = player.id === SIM_CAMERA;
             if (player.live && (!isSim || simCamera?.hasPicture)) { live++; status.textContent = `Live · ${v.videoWidth}×${v.videoHeight}`; status.className = 'small live'; }
-            else { status.className = 'small'; status.textContent = isSim ? (sim.media ? 'Loading…' : 'No photo or video chosen') : performance.now() - player.startedAt < 8000 ? 'Connecting…' : 'No video yet · check the address, and that the camera sends H.264'; }
+            else { status.className = 'small'; status.textContent = isSim ? (sim.media ? 'Loading…' : 'No photo or video chosen') : performance.now() - player.startedAt < 8000 ? 'Connecting…' : player.camera.url.startsWith('device:') ? `No picture · ${player.error || 'is it plugged in and unlocked?'}` : 'No video yet · check the address, and that the camera sends H.264'; }
         }
         return live > 0;
     }
@@ -656,6 +701,7 @@
         for (const role of ROLES) links[role] = await api.serial.state(role);
         await applySim(await api.sim.state(), true);
         await refreshThemes();
+        refreshDevices(false);
         // Real ports that were connected when the app last closed are connected again.
         for (const role of ROLES) if (!sim[PART_OF[role]] && remembered[role] && ports[role].some(p => p.path === remembered[role]) && links[role].state === 'closed') connect(role, remembered[role]);
         setInterval(refreshPorts, 3000);
