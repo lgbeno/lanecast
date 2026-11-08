@@ -193,6 +193,7 @@
             try {
                 for (;;) {
                     const known = (await navigator.mediaDevices.enumerateDevices()).filter(d => d.kind === 'videoinput');
+                    this.seen = known.map(d => d.label).filter(Boolean);                       // what macOS offers right now, for the tile to say
                     const found = known.find(d => d.deviceId === id) || (this.camera.deviceLabel && known.find(d => d.label === this.camera.deviceLabel)) || null;
                     if (found) {
                         if (found.deviceId !== id) { this.camera = { ...this.camera, url: 'device:' + found.deviceId }; api.cameras.update(this.id, { url: 'device:' + found.deviceId }).catch(() => {}); }
@@ -235,7 +236,7 @@
                     if (this.attempt !== attempt || this.stopped) return;
                     this.state = 'off';
                     this.error = e.name === 'NotAllowedError' ? 'camera access was refused · allow Lanecast in System Settings → Privacy → Camera'
-                        : e.name === 'NotFoundError' || e.name === 'OverconstrainedError' ? (this.camera.deviceLabel ? `${this.camera.deviceLabel} was not found · ${PHONE_HINT}, then Reconnect` : 'not found · is it plugged in?')
+                        : e.name === 'NotFoundError' || e.name === 'OverconstrainedError' ? (this.camera.deviceLabel ? `${this.camera.deviceLabel} was not found · macOS lists ${this.seen?.length ? this.seen.join(', ') : 'no camera'} · ${PHONE_HINT}, then Reconnect` : 'not found · is it plugged in?')
                         : e.name === 'NotReadableError' ? 'another app has the camera' : e.message;
                 }
                 render();
@@ -412,7 +413,7 @@
                 status.className = 'small';
                 status.textContent = c.simulate ? (c.media ? 'Loading the stand-in…' : 'No stand-in yet · Settings to choose a photo or video')
                     : player.isDevice ? (player.state === 'off' ? `Disconnected · ${player.error}`
-                        : player.looking ? `Looking for ${c.deviceLabel || 'the camera'} · ${player.looking} s · ${PHONE_HINT}`
+                        : player.looking ? `Looking for ${c.deviceLabel || 'the camera'} · ${player.looking} s · macOS lists ${player.seen?.length ? player.seen.join(', ') : 'no camera'} · ${PHONE_HINT}`
                         : performance.now() - player.startedAt < 8000 ? 'Connecting…' : 'No picture · the camera is open but sends nothing · try Reconnect')
                     : performance.now() - player.startedAt < 8000 ? 'Connecting…' : 'No video yet · check the address, and that the camera sends H.264';
             }
