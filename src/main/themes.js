@@ -30,7 +30,8 @@ class Themes {
                 try { m = JSON.parse(await fsp.readFile(manifest, 'utf8')); } catch (e) { continue; }
                 const id = (source === 'built-in' ? 'b-' : 'u-') + slug(entry.name);
                 if (!id.slice(2) || this.themes.has(id)) continue;
-                const control = !m.control ? null : typeof m.control === 'string' ? { page: m.control, width: 360, height: 120 } : { page: String(m.control.page || 'control.html'), width: Number(m.control.width) || 360, height: Number(m.control.height) || 120 };
+                // control: the page, the drawer width it opens at, and a height only if the page should not fill the drawer.
+                const control = !m.control ? null : typeof m.control === 'string' ? { page: m.control, width: 340, height: 0 } : { page: String(m.control.page || 'control.html'), width: Number(m.control.width) || 340, height: Number(m.control.height) || 0 };
                 this.themes.set(id, { id, name: String(m.name || entry.name), version: String(m.version || ''), author: String(m.author || ''), description: String(m.description || ''),
                     source, folder, overlay: String(m.overlay || 'overlay.html'), control, url: `theme://${id}/` });
             }

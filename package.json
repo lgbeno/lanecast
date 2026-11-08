@@ -14,7 +14,8 @@
     "test": "node test/run.js",
     "dist": "electron-builder --publish never",
     "fetch-go2rtc": "node scripts/fetch-go2rtc.js",
-    "postinstall": "electron-builder install-app-deps && node scripts/fetch-go2rtc.js"
+    "icons": "node scripts/make-icons.js",
+    "postinstall": "electron-builder install-app-deps && node scripts/fetch-go2rtc.js && node scripts/brand-dev-electron.js"
   },
   "build": {
     "appId": "live.lanecast.app",
@@ -36,7 +37,8 @@
       "target": [
         "dmg"
       ],
-      "category": "public.app-category.video"
+      "category": "public.app-category.video",
+      "icon": "build/icon.icns"
     },
     "win": {
       "target": [

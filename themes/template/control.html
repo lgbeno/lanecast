@@ -2,16 +2,17 @@
 <!--
   Lanecast theme template — the CONTROL PANEL.
 
-  Optional. If theme.json names a "control" page, Lanecast shows it in a box at the top of the
-  Stream tab, at the width and height theme.json asks for, so the person running the stream can
-  trigger things without leaving the picture. It is an ordinary page with the same runtime as
-  the overlay; it gets the same state and events, and it can talk to the overlay:
+  Optional. If theme.json names a "control" page, Lanecast shows it in a drawer down the right
+  side of the Stream tab: portrait, like a phone, as tall as the picture and scrolling inside if
+  you need more. The person running the stream can resize it by its edge or hide it. theme.json's
+  "control.width" is the width it opens at; leave out "height" to fill the drawer.
+
+  It is an ordinary page with the same runtime as the overlay; it gets the same state and events,
+  and it can talk to the overlay:
 
     Lanecast.send({ anything })     arrives in the overlay as Lanecast.on('control', m => …)
     Lanecast.on('overlay', m => …)  the overlay's Lanecast.send(...) arrives here
     Lanecast.camera('Wide')         the panel can direct the picture too
-
-  Keep it small: the box is in the way of the picture.
 -->
 <html lang="en">
 <head>
@@ -19,21 +20,27 @@
 <title>Template — control panel</title>
 <style>
 html, body { margin: 0; background: transparent; font: 13px system-ui, sans-serif; color: #edf4fb; }
-.row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; padding: 6px 0; }
-button { background: #1e3041; border: 1px solid #3c5266; border-radius: 6px; color: #f4f8fc; font: 600 13px system-ui; padding: 9px 12px; cursor: pointer; }
+body { padding: 14px 14px 20px; }
+h2 { font-size: 10px; letter-spacing: 2px; color: #9aaec2; font-weight: 750; margin: 18px 0 8px; }
+h2:first-child { margin-top: 0; }
+.stack { display: grid; gap: 8px; }
+button { background: #1e3041; border: 1px solid #3c5266; border-radius: 8px; color: #f4f8fc; font: 600 14px system-ui; padding: 12px 14px; cursor: pointer; text-align: left; width: 100%; }
 button[aria-pressed="true"] { background: #ffcc33; border-color: #ffcc33; color: #111; }
-.cams button { padding: 7px 10px; }
-.label { font-size: 10px; letter-spacing: 2px; color: #9aaec2; font-weight: 750; margin-right: 4px; }
+.now { font-size: 12px; color: #9aaec2; margin: 6px 0 0; }
+.now b { color: #edf4fb; }
 </style>
 </head>
 <body>
-<div class="row">
-  <span class="label">THEME</span>
-  <button id="lanes" aria-pressed="true">Lanes</button>
+<h2>GRAPHICS</h2>
+<div class="stack">
+  <button id="lanes" aria-pressed="true">Lane list</button>
   <button id="pip" aria-pressed="false">Picture in picture</button>
-  <button id="moment">Say hello</button>
+  <button id="moment">Say hello on the picture</button>
 </div>
-<div class="row cams"><span class="label">CAMERA</span><span id="cams"></span></div>
+<h2>CAMERA</h2>
+<div class="stack" id="cams"></div>
+<h2>NOW</h2>
+<p class="now" id="now">Waiting for the scoreboard…</p>
 
 <script src="../lanecast-theme.js"></script>
 <script>
@@ -43,9 +50,10 @@ button[aria-pressed="true"] { background: #ffcc33; border-color: #ffcc33; color:
   toggle('lanes', 'lanes');
   toggle('pip', 'pip');
   $('moment').onclick = () => Lanecast.send({ action: 'moment', text: 'Hello from the control panel' });
-  // One button per camera, from the state; the one on the program is lit.
+  // One button per camera, from the state; the one on the program is lit. A line about where the race is.
   let shown = '';
   Lanecast.on('state', s => {
+    $('now').innerHTML = s.event ? `Event <b>${s.event}</b> heat <b>${s.heat}</b> · ${s.phase} · <b>${s.clock || '0:00.0'}</b>` : 'No event on the board';
     const key = s.cameras.map(c => c.id + ':' + c.name).join('|') + '#' + s.camera;
     if (key === shown) return; shown = key;
     $('cams').replaceChildren(...s.cameras.map(c => { const b = document.createElement('button'); b.textContent = c.name; b.setAttribute('aria-pressed', String(c.id === s.camera)); b.onclick = () => Lanecast.camera(c.id); return b; }));

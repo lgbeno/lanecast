@@ -39,9 +39,10 @@ app.on('browser-window-created', (event, win) => {
         const start = await js(`({ timer: ${text('timerStatus')}, timerControls: document.getElementById('timerPort').parentElement.hidden, simPanel: !document.getElementById('simConsole').hidden && document.getElementById('timer').querySelector('.sim-panel') === null,
             meet: ${text('meetStatus')}, fetch: !document.getElementById('fetchSim').hidden && document.getElementById('loadFiles').hidden && document.getElementById('saveFiles').hidden, camSim: !document.getElementById('camSim').hidden, camAdd: document.getElementById('camAdd').hidden,
             badges: ${badges}, shown: document.querySelector('[role=tabpanel]:not([hidden])').id, error: document.getElementById('error').hidden ? '' : ${text('error')},
-            label: ${text('camerasLabel')}, deck: document.getElementById('stage').previousElementSibling.className, deckHas: [...document.querySelector('.deck').children].filter(c => !c.hidden).map(c => c.id || c.className.split(' ').pop()).join('+'),
+            label: ${text('camerasLabel')}, bar: [...document.querySelector('.topbar').children].filter(c => !c.hidden).map(c => c.id || c.className.split(' ').pop()).join('+'), barHeight: document.querySelector('.topbar').offsetHeight,
+            drawer: !document.getElementById('drawer').hidden, toggle: !document.getElementById('drawerToggle').hidden,
             fits: document.getElementById('stage').getBoundingClientRect().bottom <= window.innerHeight && document.documentElement.scrollHeight <= window.innerHeight + 1, banner: !!document.getElementById('banner'), follow: !!document.getElementById('follow') })`);
-        check(start.label === 'Camera' && start.deck === 'deck' && start.deckHas === 'program-box+simConsole', `Camera tab singular; Go Live box above the stage beside Simulation control: ${start.deckHas}`);
+        check(start.label === 'Camera' && start.bar === 'group+simConsole' && start.barHeight < 70 && !start.drawer && !start.toggle, `Camera tab singular; one thin bar with the stream and simulation controls (${start.barHeight}px), no drawer for Classic`);
         check(start.fits && !start.banner && !start.follow, `the Stream tab fits the window with no scrolling, no banner, no Show latest`);
         console.log(JSON.stringify(start, null, 1));
         check(start.shown === 'stream', 'the Stream tab is shown first: ' + start.shown);
@@ -95,12 +96,22 @@ app.on('browser-window-created', (event, win) => {
         const cards = await js(`[...document.querySelectorAll('.theme h3')].map(h => h.firstChild.textContent)`);
         check(cards.join(',') === 'Classic,Template', 'the built-in themes are listed: ' + cards.join(', '));
         await js(`[...document.querySelectorAll('.theme')].find(c => c.querySelector('h3').firstChild.textContent === 'Template').querySelector('button').click()`); await wait(2500);
-        const tpl = await js(`({ status: ${text('themeStatus')}, control: !document.getElementById('controlBox').hidden, src: document.getElementById('controlFrame').src, deck: [...document.querySelector('.deck').children].filter(c => !c.hidden).map(c => c.id || c.className.split(' ').pop()).join('+') })`);
-        check(/^Template · overlay ready · control panel ready$/.test(tpl.status) && tpl.control && tpl.src.startsWith('theme://b-template/control.html') && tpl.deck === 'program-box+controlBox+simConsole', `the Template theme loads with its control panel in the deck: ${tpl.status} · ${tpl.deck}`);
-        if (shot) { await js(`document.getElementById('tab-stream').click()`); await wait(1500); fs.writeFileSync(shot.replace(/\.png$/, '-template.png'), (await win.webContents.capturePage()).toPNG()); }
+        await js(`document.getElementById('tab-stream').click()`); await wait(1200);
+        const tpl = await js(`(() => { const stage = document.getElementById('stage').getBoundingClientRect(), d = document.getElementById('drawer'), dr = d.getBoundingClientRect(); return { status: ${text('themeStatus')}, drawer: !d.hidden, src: document.getElementById('controlFrame').src, toggle: !document.getElementById('drawerToggle').hidden,
+            right: dr.left >= stage.right, sameHeight: Math.abs(dr.height - stage.height) < 2, width: dr.width, fits: dr.bottom <= window.innerHeight && stage.bottom <= window.innerHeight && document.documentElement.scrollHeight <= window.innerHeight + 1 }; })()`);
+        check(/^Template · overlay ready · control panel ready$/.test(tpl.status) && tpl.drawer && tpl.src.startsWith('theme://b-template/control.html') && tpl.toggle, `the Template theme loads with its control panel in the drawer: ${tpl.status}`);
+        check(tpl.right && tpl.sameHeight && tpl.width >= 240 && tpl.fits, `the drawer stands right of the stage, as tall as it, ${Math.round(tpl.width)}px wide, all on screen`);
+        if (shot) fs.writeFileSync(shot.replace(/\.png$/, '-template.png'), (await win.webContents.capturePage()).toPNG());
+        // Hide the drawer: the stage takes the width; show it again.
+        const before = await js(`document.getElementById('stage').getBoundingClientRect().width`);
+        await click('drawerToggle', 500);
+        const hidden = await js(`({ drawer: document.getElementById('drawer').hidden, width: document.getElementById('stage').getBoundingClientRect().width, label: ${text('drawerToggle')} })`);
+        check(hidden.drawer && hidden.width > before && hidden.label === 'Show controls', `drawer hidden, stage grows from ${Math.round(before)} to ${Math.round(hidden.width)}px`);
+        await click('drawerToggle', 500);
+        check(await js(`!document.getElementById('drawer').hidden`), 'drawer shown again');
         await js(`document.getElementById('tab-theme').click(); [...document.querySelectorAll('.theme')].find(c => c.querySelector('h3').firstChild.textContent === 'Classic').querySelector('button').click()`); await wait(2000);
-        const back = await js(`({ status: ${text('themeStatus')}, control: document.getElementById('controlBox').hidden })`);
-        check(/^Classic · overlay ready$/.test(back.status) && back.control, `back to Classic, control panel gone: ${back.status}`);
+        const back = await js(`({ status: ${text('themeStatus')}, drawer: document.getElementById('drawer').hidden, toggle: document.getElementById('drawerToggle').hidden })`);
+        check(/^Classic · overlay ready$/.test(back.status) && back.drawer && back.toggle, `back to Classic, drawer and its toggle gone: ${back.status}`);
         await js(`document.getElementById('tab-stream').click()`); await wait(300);
 
         if (shot) {
