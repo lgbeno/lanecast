@@ -41,6 +41,7 @@
       "icon": "build/icon.icns",
       "extendInfo": {
         "NSCameraUsageDescription": "Lanecast shows cameras attached to this computer, including an iPhone used as a camera, in the stream.",
+        "NSCameraUseContinuityCameraDeviceType": true,
         "NSMicrophoneUsageDescription": "Lanecast can take sound from a camera attached to this computer."
       }
     },

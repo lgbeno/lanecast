@@ -224,6 +224,9 @@
                     const stream = await navigator.mediaDevices.getUserMedia({ video: { deviceId: { exact: deviceId }, width: { ideal: 1920 }, height: { ideal: 1080 }, frameRate: { ideal: 30 } }, audio: false });
                     if (this.attempt !== attempt || this.stopped || this.camera.simulate) { stream.getTracks().forEach(t => t.stop()); return; }
                     this.stream = stream; this.video.srcObject = stream; this.state = 'open';
+                    // A camera added before its name was known (no camera access yet) learns it now, so Reconnect can find it by name.
+                    const label = stream.getVideoTracks()[0].label;
+                    if (label && label !== this.camera.deviceLabel) { this.camera = { ...this.camera, deviceLabel: label }; api.cameras.update(this.id, { deviceLabel: label }).catch(() => {}); }
                     stream.getVideoTracks()[0].onended = () => {                                // the phone's Disconnect, or a cable pulled: off until Reconnect
                         if (this.stream !== stream) return;
                         this.close(); this.video.srcObject = null; this.state = 'off'; this.error = 'the camera ended the picture'; render();
@@ -320,15 +323,33 @@
         if (document.activeElement !== $('cdName')) $('cdName').value = camera.name;
         $('cdUrlField').hidden = camera.local;
         if (document.activeElement !== $('cdUrl')) $('cdUrl').value = camera.local ? '' : camera.url;
+        // A camera on this computer can be pointed at another device: the one macOS lists now, when the saved id or name no longer matches.
+        $('cdDeviceField').hidden = !camera.local;
+        if (camera.local && document.activeElement !== $('cdDevice')) {
+            const options = devices.filter(d => d.deviceId).map((d, i) => new Option(d.label || `Camera ${i + 1}`, 'device:' + d.deviceId));     // ids are hidden until camera access is given
+            if (!devices.some(d => 'device:' + d.deviceId === camera.url)) options.unshift(new Option(`${camera.deviceLabel || 'Saved device'} (not present now)`, camera.url));
+            $('cdDevice').replaceChildren(...options); $('cdDevice').value = camera.url;
+        }
         $('cdSource').textContent = camera.local ? 'A camera on this computer.' : camera.url ? '' : 'No address: this camera is a stand-in only until one is set.';
         $('cdSimulate').checked = camera.simulate; $('cdSimulate').disabled = !camera.url;
         $('cdMedia').textContent = camera.media ? `${camera.media.kind === 'video' ? 'Video' : 'Photo'}: ${camera.media.name}` : 'None yet.';
         $('cdClearMedia').disabled = !camera.media;
     }
-    function openCameraDialog(id) { dialogCamera = id; fillCameraDialog(cameraList.find(c => c.id === id) || null); if (dialogCamera) $('cameraDialog').showModal(); }
+    function openCameraDialog(id) {
+        dialogCamera = id; const camera = cameraList.find(c => c.id === id) || null;
+        fillCameraDialog(camera); if (dialogCamera) $('cameraDialog').showModal();
+        if (camera?.local) refreshDevices(false).then(() => { if (dialogCamera === id) fillCameraDialog(cameraList.find(c => c.id === id) || null); });     // the device list as it is now
+    }
     $('cdSave').onclick = async () => {
         hideError();
-        try { await api.cameras.update(dialogCamera, { name: $('cdName').value, url: $('cdUrlField').hidden ? undefined : $('cdUrl').value, simulate: $('cdSimulate').checked }); $('cameraDialog').close(); }
+        try {
+            const camera = cameraList.find(c => c.id === dialogCamera), patch = { name: $('cdName').value, url: $('cdUrlField').hidden ? undefined : $('cdUrl').value, simulate: $('cdSimulate').checked };
+            if (camera?.local && $('cdDevice').value && $('cdDevice').value !== camera.url) {        // pointed at another device: new id and name
+                const picked = devices.find(d => 'device:' + d.deviceId === $('cdDevice').value);
+                patch.url = $('cdDevice').value; patch.deviceLabel = picked?.label || '';
+            }
+            await api.cameras.update(dialogCamera, patch); $('cameraDialog').close();
+        }
         catch (e) { showError(e); }
         await refreshCameras();
     };
@@ -365,7 +386,8 @@
         }));
         if (!devices.length) { const none = document.createElement('p'); none.className = 'small'; none.textContent = devicesAsked ? 'No cameras found on this computer.' : 'Press Find cameras to look.'; $('deviceList').replaceChildren(none); }
         else if (!devices.some(d => d.label)) $('deviceNote').textContent = 'Press Find cameras to see their names.';
-        else if (!$('deviceNote').textContent.startsWith('Camera access')) $('deviceNote').textContent = '';
+        else if (!$('deviceNote').textContent.startsWith('Camera access')) $('deviceNote').textContent = devices.some(d => /iphone|ipad/i.test(d.label)) ? ''
+            : 'This is the list macOS offers right now (Photo Booth shows the same one). An iPhone appears while it is nearby with Bluetooth and Wi‑Fi on and Continuity Camera enabled.';
     }
     $('findDevices').onclick = () => refreshDevices(true);
     // Cameras come and go: keep the list current. A camera that went away is not reopened on its own; its tile has Reconnect.

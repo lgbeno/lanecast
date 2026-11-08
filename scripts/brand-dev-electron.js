@@ -16,6 +16,10 @@ if (!fs.existsSync(plist)) process.exit(0);
 let text = fs.readFileSync(plist, 'utf8');
 const set = (key, value) => { text = text.replace(new RegExp(`(<key>${key}</key>\\s*<string>)[^<]*(</string>)`), `$1${value}$2`); };
 set('CFBundleName', 'Lanecast'); set('CFBundleDisplayName', 'Lanecast');
+// Without this key macOS shows an iPhone only once it has auto-connected (locked, set down in landscape); with it,
+// the phone is listed whenever it is nearby, as in Photo Booth, and picking it connects. The packaged app gets it
+// from package.json's extendInfo.
+if (!text.includes('NSCameraUseContinuityCameraDeviceType')) text = text.replace('<key>NSCameraUsageDescription</key>', '<key>NSCameraUseContinuityCameraDeviceType</key>\n\t<true/>\n\t<key>NSCameraUsageDescription</key>');
 fs.writeFileSync(plist, text);
 if (fs.existsSync(icns)) fs.copyFileSync(icns, path.join(bundle, 'Resources', 'electron.icns'));
 // The Dock's tooltip and Finder take the *localized* name, and with none macOS falls back to the folder name, "Electron".
