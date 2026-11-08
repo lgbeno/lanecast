@@ -178,24 +178,35 @@
      *  A network camera reconnects by itself. A camera on this computer is opened once, and when it ends (the
      *  iPhone's Disconnect, a cable pulled) it stays off until Reconnect is pressed: retrying on its own would
      *  keep waking a phone someone has just put away. */
+    const LOOK_MS = 90000;
+    const PHONE_HINT = 'lock the phone and set it down in landscape near this Mac, or plug it in';
     class Player {
-        constructor(camera, video) { this.id = camera.id; this.camera = camera; this.video = video; this.pc = null; this.stream = null; this.standIn = null; this.timer = null; this.stopped = false; this.frames = 0; this.frameAt = 0; this.startedAt = performance.now(); this.state = 'connecting'; this.error = ''; this.attempt = 0; this.start(); }
+        constructor(camera, video) { this.id = camera.id; this.camera = camera; this.video = video; this.pc = null; this.stream = null; this.standIn = null; this.timer = null; this.stopped = false; this.frames = 0; this.frameAt = 0; this.startedAt = performance.now(); this.state = 'connecting'; this.error = ''; this.attempt = 0; this.lookingUntil = 0; this.start(); }
         get isDevice() { return !this.camera.simulate && !!this.camera.url && this.camera.url.startsWith('device:'); }
         /** The device this camera is, by its id or, when the id has changed (an iPhone gets a new one each time), by its name.
          *  With `wait`, keeps looking for a few seconds: macOS offers a phone a moment after it is unlocked. Remembers a new id. */
         async findDevice(wait) {
-            const deadline = performance.now() + (wait ? 6000 : 0), id = this.camera.url.slice(7), attempt = this.attempt;
-            for (;;) {
-                const known = (await navigator.mediaDevices.enumerateDevices()).filter(d => d.kind === 'videoinput');
-                const found = known.find(d => d.deviceId === id) || (this.camera.deviceLabel && known.find(d => d.label === this.camera.deviceLabel)) || null;
-                if (found) {
-                    if (found.deviceId !== id) { this.camera = { ...this.camera, url: 'device:' + found.deviceId }; api.cameras.update(this.id, { url: 'device:' + found.deviceId }).catch(() => {}); }
-                    return found.deviceId;
+            // After the iPhone's Disconnect, macOS drops the phone from every app's camera list until it is locked and set
+            // down again (or plugged in), which takes a person a while: so Reconnect keeps looking for a good minute and a half.
+            const deadline = performance.now() + (wait ? LOOK_MS : 0), id = this.camera.url.slice(7), attempt = this.attempt;
+            this.lookingUntil = wait ? deadline : 0;
+            try {
+                for (;;) {
+                    const known = (await navigator.mediaDevices.enumerateDevices()).filter(d => d.kind === 'videoinput');
+                    const found = known.find(d => d.deviceId === id) || (this.camera.deviceLabel && known.find(d => d.label === this.camera.deviceLabel)) || null;
+                    if (found) {
+                        if (found.deviceId !== id) { this.camera = { ...this.camera, url: 'device:' + found.deviceId }; api.cameras.update(this.id, { url: 'device:' + found.deviceId }).catch(() => {}); }
+                        return found.deviceId;
+                    }
+                    if (performance.now() >= deadline || this.attempt !== attempt || this.stopped) return null;
+                    await new Promise(resolve => setTimeout(resolve, 500));
                 }
-                if (performance.now() >= deadline || this.attempt !== attempt || this.stopped) return null;
-                await new Promise(resolve => setTimeout(resolve, 500));
-            }
+            } finally { if (this.attempt === attempt) this.lookingUntil = 0; }
         }
+        /** How many seconds Reconnect will keep looking, or 0 when it is not. */
+        get looking() { return this.state === 'connecting' && this.lookingUntil ? Math.max(0, Math.ceil((this.lookingUntil - performance.now()) / 1000)) : 0; }
+        /** Stop pressed while looking. */
+        cancel() { this.attempt++; clearTimeout(this.timer); this.close(); this.lookingUntil = 0; this.state = 'off'; this.error = 'stopped looking'; render(); }
         async start(wait = false) {
             if (this.stopped) return;
             if (this.camera.simulate) { this.standIn ||= new StandIn(); this.standIn.setMedia(this.camera); this.video.srcObject = this.standIn.stream; return; }
@@ -221,7 +232,7 @@
                     if (this.attempt !== attempt || this.stopped) return;
                     this.state = 'off';
                     this.error = e.name === 'NotAllowedError' ? 'camera access was refused · allow Lanecast in System Settings → Privacy → Camera'
-                        : e.name === 'NotFoundError' || e.name === 'OverconstrainedError' ? (this.camera.deviceLabel ? `${this.camera.deviceLabel} was not found · unlock it near this computer, or plug it in` : 'not found · is it plugged in?')
+                        : e.name === 'NotFoundError' || e.name === 'OverconstrainedError' ? (this.camera.deviceLabel ? `${this.camera.deviceLabel} was not found · ${PHONE_HINT}, then Reconnect` : 'not found · is it plugged in?')
                         : e.name === 'NotReadableError' ? 'another app has the camera' : e.message;
                 }
                 render();
@@ -370,13 +381,17 @@
             figure.querySelector('.name').textContent = c.name;
             figure.querySelector('.sim-badge').hidden = !c.simulate;
             const box = figure.querySelector('.camSim'); if (box.checked !== c.simulate) box.checked = c.simulate; box.disabled = !c.url;
-            const again = figure.querySelector('.reconnect');
-            again.hidden = !player.isDevice || player.live; again.disabled = player.state === 'connecting';
+            const again = figure.querySelector('.reconnect'), looking = player.looking;
+            again.hidden = !player.isDevice || player.live; again.disabled = player.state === 'connecting' && !looking;
+            again.textContent = looking ? 'Stop' : 'Reconnect';
+            again.onclick = looking ? () => player.cancel() : () => { player.reconnect(); render(); };
             if (player.live) { live++; status.textContent = `${c.simulate ? 'Stand-in' : 'Live'} · ${v.videoWidth}×${v.videoHeight}`; status.className = 'small live'; }
             else {
                 status.className = 'small';
                 status.textContent = c.simulate ? (c.media ? 'Loading the stand-in…' : 'No stand-in yet · Settings to choose a photo or video')
-                    : player.isDevice ? (player.state === 'off' ? `Disconnected · ${player.error}` : performance.now() - player.startedAt < 8000 ? 'Connecting…' : 'No picture · the camera is open but sends nothing · try Reconnect')
+                    : player.isDevice ? (player.state === 'off' ? `Disconnected · ${player.error}`
+                        : player.looking ? `Looking for ${c.deviceLabel || 'the camera'} · ${player.looking} s · ${PHONE_HINT}`
+                        : performance.now() - player.startedAt < 8000 ? 'Connecting…' : 'No picture · the camera is open but sends nothing · try Reconnect')
                     : performance.now() - player.startedAt < 8000 ? 'Connecting…' : 'No video yet · check the address, and that the camera sends H.264';
             }
             status.title = status.textContent;                       // the whole message, where the tile cuts it short
