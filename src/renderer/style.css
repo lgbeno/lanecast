@@ -104,19 +104,16 @@ input.edit{width:100%;min-width:120px;background:#0c1620;color:var(--text);borde
 .box{border:1px solid var(--line);border-radius:10px;padding:8px 12px;display:flex;align-items:center;gap:10px}
 .program-box{background:var(--card)}
 .stage{position:relative;width:100%;margin:0 auto;background:#060a0f;border:1px solid var(--line);border-radius:12px;overflow:hidden}
-.stage video{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;background:#000}
+.stage video{position:absolute;left:0;top:0;width:100%;height:100%;object-fit:contain;background:#000;transition:left .4s,top .4s,width .4s,height .4s}
 .stage-note{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;margin:0;color:var(--muted);font-size:14px}.stage-note[hidden]{display:none}
 .program-box .live{padding:10px 20px;font-size:14px}
-/* The overlay drawn on the program: a lower third with the event, the clock and the lanes. */
-.bug{position:absolute;left:3%;right:3%;bottom:5%;font-family:system-ui,sans-serif;text-shadow:0 1px 2px rgba(0,0,0,.6);pointer-events:none}
-.bug-top{display:flex;align-items:stretch;gap:2px}
-.bug-event{flex:1;background:rgba(11,17,25,.88);backdrop-filter:blur(6px);border-left:6px solid var(--accent);padding:10px 18px;min-width:0}
-.bug-event span{display:block;font:700 12px/1.3 system-ui;letter-spacing:2px;color:var(--accent)}
-.bug-event strong{display:block;font:700 clamp(16px,2.2vw,28px)/1.2 system-ui;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-transform:uppercase}
-.bug-clock{background:rgba(11,17,25,.88);backdrop-filter:blur(6px);padding:6px 22px;font:700 clamp(26px,3.6vw,46px)/1.2 ui-monospace,monospace;font-variant-numeric:tabular-nums;display:flex;align-items:center}
-.bug-lanes{list-style:none;margin:2px 0 0;padding:0;display:grid;grid-template-columns:repeat(2,1fr);gap:2px}
-.bug-lanes li{display:grid;grid-template-columns:2.2em 1fr auto;gap:12px;align-items:center;background:rgba(11,17,25,.78);padding:4px 14px;font:600 clamp(12px,1.3vw,17px)/1.4 system-ui}
-.bug-lanes .lane{color:var(--muted);font-variant-numeric:tabular-nums}
-.bug-lanes .name{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.bug-lanes .name small{color:var(--muted);font-weight:500;margin-left:8px}
-.bug-lanes .time{font-family:ui-monospace,monospace;font-variant-numeric:tabular-nums;color:var(--accent)}
-.bug-lanes li.placed .lane{color:var(--text);font-weight:800}
+/* The theme: its overlay fills the stage over the picture; its control panel sits in the deck. */
+/* color-scheme:light on the frames: Chromium paints an opaque backdrop behind a frame whose scheme differs from the page's. */
+.stage .overlay{position:absolute;inset:0;width:100%;height:100%;border:0;background:transparent;pointer-events:none;color-scheme:light}
+.control-box{padding:4px 10px}.control-box iframe{border:0;background:transparent;display:block;width:420px;height:96px;color-scheme:light}
+.tiles.themes{grid-template-columns:repeat(auto-fill,minmax(260px,1fr))}
+.theme{margin:0;background:#0c1620;border:1px solid var(--line);border-radius:10px;padding:16px;display:flex;flex-direction:column;gap:6px;min-height:150px}
+.theme.active{border-color:var(--accent)}
+.theme h3{margin:0;font-size:15px;display:flex;align-items:center;gap:8px}.theme h3 .count{margin-left:auto}
+.theme p{margin:0;flex:1}.theme .actions{margin:8px 0 0}
+.theme .source{font-size:11px;color:var(--muted);letter-spacing:1px;text-transform:uppercase}

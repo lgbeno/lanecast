@@ -39,6 +39,14 @@ contextBridge.exposeInMainWorld('lanecast', {
         remove: id => invoke('cameras:remove', id),
         onStatus: callback => on('cameras:status', callback)
     },
+    themes: {
+        list: () => invoke('themes:list'),
+        active: () => invoke('themes:active'),
+        select: id => invoke('themes:select', id),
+        create: name => invoke('themes:create', name),
+        openFolder: () => invoke('themes:openFolder'),
+        folder: () => invoke('themes:folder')
+    },
     store: {
         get: key => invoke('store:get', key),
         set: (key, value) => invoke('store:set', key, value)

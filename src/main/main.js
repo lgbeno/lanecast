@@ -5,19 +5,20 @@
  *   cameras     -> go2rtc -> window (WebRTC)
  */
 'use strict';
-const { app, BrowserWindow, ipcMain, dialog } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, protocol, shell } = require('electron');
 const path = require('node:path');
 const fs = require('node:fs/promises');
 const { SerialRoles } = require('./serial');
 const { Relay } = require('./relay');
 const { Store } = require('./store');
 const { CameraEngine } = require('./cameras');
+const { Themes } = require('./themes');
 
 const PARTS = ['timer', 'events', 'cameras'];
 const IMAGES = ['png', 'jpg', 'jpeg', 'gif', 'webp'], VIDEOS = ['mp4', 'm4v', 'mov', 'webm'];
 const MIME = { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', webp: 'image/webp', mp4: 'video/mp4', m4v: 'video/mp4', mov: 'video/quicktime', webm: 'video/webm' };
 const MEDIA_LIMIT = 500 * 1024 * 1024;
-let win = null, serial = null, relay = null, store = null, cameras = null;
+let win = null, serial = null, relay = null, store = null, cameras = null, themes = null;
 // Each part can be simulated on its own: the timer, the meet data, the cameras.
 const simulated = { timer: false, events: false, cameras: false };
 let simMedia = null;             // the simulated camera's picture: { path, name, kind: 'image' | 'video', mime, version }
@@ -25,11 +26,18 @@ let simMedia = null;             // the simulated camera's picture: { path, name
 const allSimulated = process.env.LANECAST_SIMULATE === '1';
 const send = (channel, ...args) => { if (win && !win.isDestroyed()) win.webContents.send(channel, ...args); };
 
+// Themes are pages served from their own folders over theme://<id>/; see src/main/themes.js.
+protocol.registerSchemesAsPrivileged([{ scheme: 'theme', privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true, stream: true } }]);
+
+const ICON = path.join(__dirname, '..', '..', 'build', 'icon.png');
+app.setName('Lanecast');     // the app's own name in menus and dialogs, even when run from the Electron binary in development
+
 function createWindow() {
     win = new BrowserWindow({
-        width: 1280, height: 860, minWidth: 900, minHeight: 600, backgroundColor: '#0b1119', title: 'Lanecast',
+        width: 1280, height: 860, minWidth: 900, minHeight: 600, backgroundColor: '#0b1119', title: 'Lanecast', icon: ICON,
         webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, sandbox: true, nodeIntegration: false }
     });
+    win.on('page-title-updated', e => e.preventDefault());
     win.loadFile(path.join(__dirname, '..', 'renderer', 'index.html'));
     win.on('closed', () => { win = null; });
 }
@@ -59,11 +67,15 @@ async function setMedia(file) {
 }
 
 app.whenReady().then(async () => {
+    if (process.platform === 'darwin' && app.dock) app.dock.setIcon(ICON);
     store = new Store(path.join(app.getPath('userData'), 'lanecast.json'));
     await store.load();
     const saved = store.get('simulate', {});
     for (const p of PARTS) simulated[p] = allSimulated || !!(saved && saved[p]);
     try { const m = store.get('simMedia'); if (m && m.path) await setMedia(m.path); } catch (e) { simMedia = null; }
+    themes = new Themes({ userDir: path.join(app.getPath('userData'), 'themes') });
+    await themes.list();
+    protocol.handle('theme', request => themes.serve(request));
     serial = new SerialRoles({ simulated: { timer: simulated.timer }, onData: (role, bytes) => send('serial:data', role, bytes), onState: (role, state) => send('serial:state', role, state) });
     relay = new Relay({ port: Number(store.get('relayPort', 8080)) || 8080, onStatus: status => send('relay:status', status) });
     relay.start();
@@ -110,6 +122,12 @@ ipcMain.handle('cameras:status', () => cameras.state());
 ipcMain.handle('cameras:list', () => cameras.list());
 ipcMain.handle('cameras:add', (event, camera) => cameras.add(camera || {}));
 ipcMain.handle('cameras:remove', (event, id) => cameras.remove(String(id)));
+ipcMain.handle('themes:list', () => themes.list());
+ipcMain.handle('themes:active', () => store.get('theme', 'b-classic'));
+ipcMain.handle('themes:select', (event, id) => { if (!themes.get(String(id))) throw new Error('No such theme'); store.set('theme', String(id)); return String(id); });
+ipcMain.handle('themes:create', (event, name) => themes.createFromTemplate(String(name || '')));
+ipcMain.handle('themes:openFolder', async () => { await fs.mkdir(themes.userDir, { recursive: true }); return shell.openPath(themes.userDir); });
+ipcMain.handle('themes:folder', () => themes.userDir);
 ipcMain.handle('store:get', (event, key) => store.get(key));
 ipcMain.handle('store:set', (event, key, value) => { store.set(key, value); });
 

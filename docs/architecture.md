@@ -27,18 +27,9 @@ main.js     window, file dialogs, IPC
 - **Design mode.** Opened in an ordinary browser, `src/renderer/mock.js` installs a stand-in `window.lanecast` (the simulated meet in-page, a canvas as the camera, localStorage as the store), so layout and style can be worked on with a reload instead of an Electron launch. Inside Electron the file does nothing.
 - The window runs sandboxed with context isolation; `src/main/preload.js` is the whole surface it can reach.
 
-## The packet
+## The messages
 
-One JSON object per message, built by `src/protocol/packet.js`:
-
-```json
-{ "v": 1, "type": "scoreboard",
-  "event": 73, "heat": 1, "title": "MIXED 100 FREE RELAY",
-  "clock": "0:13.0", "state": "running",
-  "lanes": [ { "lane": 1, "name": "Alex Sample", "team": "AAA", "time": "", "place": "", "followsClock": true }, "… ten lanes" ] }
-```
-
-Fields hold what the console displays. `state` is `running`, `reset` (inferred, see the timer notes) or `unknown`. A lane's `time` is the time on its display, which may be a split or a finish; `place` is the displayed place. `followsClock` means the lane module is showing the running clock. A packet goes out on every clock change and at most once a second when nothing changes.
+Two kinds of JSON message, built by `src/protocol/packet.js`, go to the theme's frames and to every overlay on the WebSocket feed: a `state` message (the whole scoreboard, with `phase`, the lanes, the cameras) on every change and at most once a second otherwise, and an `event` message (`heat.lineup`, `race.start`, `lane.split`, `lane.finish`, `heat.finish`, `event.finish`, …) when something happens, derived by `src/protocol/events.js` from successive snapshots. Every field is spelled out in [themes.md](themes.md).
 
 ## What is built and what is next
 
@@ -49,7 +40,8 @@ Fields hold what the console displays. `state` is `running`, `reset` (inferred, 
 | Overlay feed out (WebSocket) | Built |
 | Simulation | Built, per part, from each tab's switch; off by default, remembered between sessions |
 | Camera in | Built for RTSP: go2rtc sidecar → WebRTC → `<video>`, fetched per platform by `scripts/fetch-go2rtc.js` and shipped as an extra resource. NDI later via the NDI SDK runtime and a native binding |
-| Compositing | Started: the Stream tab shows the program camera under a lower third drawn from the packet (DOM today; the encoder will need a canvas or capture of this view) |
+| Themes | Built: a theme is a folder (theme.json, overlay.html, optional control.html) served over `theme://<id>/` from `themes/` or the user's data folder, run in sandboxed frames; the overlay over the picture, the control panel in the deck. Themes get `state` and `event` messages (`src/protocol/packet.js`, `src/protocol/events.js`) and can cut cameras and place them (`Lanecast.camera`, `Lanecast.layout`). Reference: [themes.md](themes.md) |
+| Compositing | The Stream tab composites the program camera (placed by the theme) under the theme's overlay frame; the encoder will need a capture of this view |
 | Stream out | After compositing: WebCodecs (hardware H.264 on Mac/Windows) or a bundled ffmpeg encodes; ffmpeg muxes and pushes RTMP to YouTube. On Linux prefer ffmpeg with VAAPI; Chromium's software encoder there is baseline OpenH264 |
 | Installers | CI builds `.dmg`, `.exe`, `.AppImage`/`.deb` on tags; unsigned until there is a certificate |
 

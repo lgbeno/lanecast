@@ -1,0 +1,7 @@
+{
+  "name": "Classic",
+  "version": "1.0.0",
+  "author": "Lanecast",
+  "description": "A lower third: event and heat, the title, the running clock, and the lanes — the lineup before the start, places and times as they finish.",
+  "overlay": "overlay.html"
+}

@@ -39,7 +39,7 @@ app.on('browser-window-created', (event, win) => {
         const start = await js(`({ timer: ${text('timerStatus')}, timerControls: document.getElementById('timerPort').parentElement.hidden, simPanel: !document.getElementById('simConsole').hidden && document.getElementById('timer').querySelector('.sim-panel') === null,
             meet: ${text('meetStatus')}, fetch: !document.getElementById('fetchSim').hidden && document.getElementById('loadFiles').hidden && document.getElementById('saveFiles').hidden, camSim: !document.getElementById('camSim').hidden, camAdd: document.getElementById('camAdd').hidden,
             badges: ${badges}, shown: document.querySelector('[role=tabpanel]:not([hidden])').id, error: document.getElementById('error').hidden ? '' : ${text('error')},
-            label: ${text('camerasLabel')}, deck: document.getElementById('stage').previousElementSibling.className, deckHas: [...document.querySelector('.deck').children].map(c => c.id || c.className.split(' ').pop()).join('+'),
+            label: ${text('camerasLabel')}, deck: document.getElementById('stage').previousElementSibling.className, deckHas: [...document.querySelector('.deck').children].filter(c => !c.hidden).map(c => c.id || c.className.split(' ').pop()).join('+'),
             fits: document.getElementById('stage').getBoundingClientRect().bottom <= window.innerHeight && document.documentElement.scrollHeight <= window.innerHeight + 1, banner: !!document.getElementById('banner'), follow: !!document.getElementById('follow') })`);
         check(start.label === 'Camera' && start.deck === 'deck' && start.deckHas === 'program-box+simConsole', `Camera tab singular; Go Live box above the stage beside Simulation control: ${start.deckHas}`);
         check(start.fits && !start.banner && !start.follow, `the Stream tab fits the window with no scrolling, no banner, no Show latest`);
@@ -75,12 +75,12 @@ app.on('browser-window-created', (event, win) => {
         const r = await js(`({ timer: ${text('timerStatus')}, clock: ${text('clock')}, event: ${text('event')}, relay: ${text('relayStatus')}, clients: ${text('clients')}, packets: ${text('packets')}, ready: ${dots} })`);
         check(/^\d:\d\d\.\d$/.test(r.clock) && r.ready.timer, 'clock shows a time and the Timer dot is green: ' + r.clock);
         check(/^Listening/.test(r.relay) && r.clients === '1', 'overlay feed listening with the test overlay counted: ' + r.relay);
-        check(Number(r.packets) >= 5 && received.length >= 5 && received.at(-1).type === 'scoreboard', `packets published and received: ${r.packets} / ${received.length}`);
+        check(Number(r.packets) >= 5 && received.length >= 5 && received.every(m => m.type === 'state' || m.type === 'event') && received.some(m => m.type === 'event' && m.name === 'race.start'), `packets published and received, states and events: ${r.packets} / ${received.length}, events ${received.filter(m => m.type === 'event').map(m => m.name).join(',')}`);
         check(received.some(p => p.lanes.some(l => l.name)), 'packets carry names from the start lists');
 
         // Cameras: the simulated camera shows the photo from the settings file, live, without ffmpeg; the program shows it.
         const cams = await js(`({ tiles: document.querySelectorAll('.tile').length, status: [...document.querySelectorAll('.tile .small')].map(s => s.textContent), media: ${text('mediaName')}, engine: ${text('engineStatus')}, ready: ${dots},
-            program: document.getElementById('programVideo').videoWidth, note: document.getElementById('stageNote').hidden, bug: !document.getElementById('bug').hidden, pstatus: ${text('programStatus')} })`);
+            program: document.getElementById('programVideo').videoWidth, note: document.getElementById('stageNote').hidden, bug: document.getElementById('overlayFrame').src.startsWith('theme://b-classic/overlay.html'), pstatus: ${text('programStatus')}, theme: ${text('themeStatus')} })`);
         check(cams.tiles === 1 && /^Live · 1280×720/.test(cams.status[0]) && cams.media === 'Photo: icon.png', `the simulated camera shows the remembered photo, live: ${cams.status.join(' / ')} · ${cams.media}`);
         check(/^Camera engine running/.test(cams.engine), 'camera engine running: ' + cams.engine);
         const pixel = await js(`(() => { const v = document.getElementById('programVideo'), c = document.createElement('canvas'); c.width = 64; c.height = 36; const x = c.getContext('2d'); x.drawImage(v, 0, 0, 64, 36); const d = x.getImageData(0, 0, 64, 36).data; let lit = 0; for (let i = 0; i < d.length; i += 4) if (d[i] + d[i + 1] + d[i + 2] > 120) lit++; return lit; })()`);
@@ -88,7 +88,20 @@ app.on('browser-window-created', (event, win) => {
         await click('clearMedia', 2500);
         const none = await js(`({ media: ${text('mediaName')}, status: document.querySelector('.tile .small').textContent, ready: ${dots} })`);
         check(none.media === 'No photo or video chosen.' && none.status === 'No photo or video chosen' && !none.ready.cameras, `photo removed: nothing stands in, the dot goes quiet: ${none.media} · ${none.status}`);
-        check(cams.ready.cameras && cams.ready.stream && cams.program > 0 && cams.note && cams.bug && /^Idle · program ready/.test(cams.pstatus), `program shows the camera under the lower third: ${cams.program}px, ${cams.pstatus}`);
+        check(cams.ready.cameras && cams.ready.stream && cams.program > 0 && cams.note && cams.bug && /^Idle · program ready/.test(cams.pstatus), `program shows the camera under the theme's overlay: ${cams.program}px, ${cams.pstatus}`);
+        check(/^Classic · overlay ready$/.test(cams.theme) && cams.ready.theme, `the Classic theme is up and the Theme dot is green: ${cams.theme}`);
+        // Themes: switch to the template (which has a control panel) and back.
+        await js(`document.getElementById('tab-theme').click()`); await wait(300);
+        const cards = await js(`[...document.querySelectorAll('.theme h3')].map(h => h.firstChild.textContent)`);
+        check(cards.join(',') === 'Classic,Template', 'the built-in themes are listed: ' + cards.join(', '));
+        await js(`[...document.querySelectorAll('.theme')].find(c => c.querySelector('h3').firstChild.textContent === 'Template').querySelector('button').click()`); await wait(2500);
+        const tpl = await js(`({ status: ${text('themeStatus')}, control: !document.getElementById('controlBox').hidden, src: document.getElementById('controlFrame').src, deck: [...document.querySelector('.deck').children].filter(c => !c.hidden).map(c => c.id || c.className.split(' ').pop()).join('+') })`);
+        check(/^Template · overlay ready · control panel ready$/.test(tpl.status) && tpl.control && tpl.src.startsWith('theme://b-template/control.html') && tpl.deck === 'program-box+controlBox+simConsole', `the Template theme loads with its control panel in the deck: ${tpl.status} · ${tpl.deck}`);
+        if (shot) { await js(`document.getElementById('tab-stream').click()`); await wait(1500); fs.writeFileSync(shot.replace(/\.png$/, '-template.png'), (await win.webContents.capturePage()).toPNG()); }
+        await js(`document.getElementById('tab-theme').click(); [...document.querySelectorAll('.theme')].find(c => c.querySelector('h3').firstChild.textContent === 'Classic').querySelector('button').click()`); await wait(2000);
+        const back = await js(`({ status: ${text('themeStatus')}, control: document.getElementById('controlBox').hidden })`);
+        check(/^Classic · overlay ready$/.test(back.status) && back.control, `back to Classic, control panel gone: ${back.status}`);
+        await js(`document.getElementById('tab-stream').click()`); await wait(300);
 
         if (shot) {
             for (const t of ['stream', 'timer', 'events', 'cameras']) {

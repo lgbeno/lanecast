@@ -2,10 +2,10 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self'; img-src 'self' data: blob:; connect-src 'self' http://127.0.0.1:*; media-src 'self' blob:">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self'; img-src 'self' data: blob:; connect-src 'self' http://127.0.0.1:*; media-src 'self' blob:; frame-src theme: about:">
 <title>Lanecast</title>
 <link rel="stylesheet" href="style.css">
-<script defer src="../protocol/cts.js"></script><script defer src="../protocol/genser.js"></script><script defer src="../protocol/packet.js"></script><script defer src="../protocol/simulator.js"></script>
+<script defer src="../protocol/cts.js"></script><script defer src="../protocol/genser.js"></script><script defer src="../protocol/packet.js"></script><script defer src="../protocol/events.js"></script><script defer src="../protocol/simulator.js"></script>
 <script defer src="mock.js"></script><script defer src="app.js"></script>
 </head>
 <body>
@@ -21,6 +21,7 @@
 <div class="program">
 <div class="deck">
 <div class="box program-box"><button id="goLive" class="primary live">Go Live</button><button id="configure">Configure</button><span id="programStatus" class="small">Idle</span></div>
+<div class="box control-box" id="controlBox" hidden><iframe id="controlFrame" sandbox="allow-scripts" title="Theme control panel"></iframe></div>
 <details id="simConsole" class="sim-panel box" hidden><summary><span class="eyebrow">SIMULATION CONTROL</span><span id="simSummary" class="small"></span></summary>
 <div class="sim-row">
 <div><p class="eyebrow">EVENT</p><div class="stepper"><button id="simEventDown" class="step" type="button" title="Previous event">−</button><input id="simEventNo" type="number" min="1" max="999" aria-label="Event"><button id="simEventUp" class="step" type="button" title="Next event">+</button></div></div>
@@ -30,10 +31,7 @@
 </div>
 <div class="stage" id="stage">
 <video id="programVideo" autoplay muted playsinline></video>
-<div class="bug" id="bug" hidden>
-<div class="bug-top"><div class="bug-event"><span id="bugEvent">EVENT — · HEAT —</span><strong id="bugTitle"></strong></div><div class="bug-clock" id="bugClock">—:—.—</div></div>
-<ol class="bug-lanes" id="bugLanes"></ol>
-</div>
+<iframe id="overlayFrame" class="overlay" sandbox="allow-scripts" allowtransparency="true" title="Theme overlay"></iframe>
 <p class="stage-note" id="stageNote">No camera. Add one on the Cameras tab.</p>
 </div>
 </div>
@@ -97,8 +95,19 @@
 </div></section>
 
 <section id="theme" role="tabpanel" aria-labelledby="tab-theme" hidden>
-<article class="soon"><p class="small">Not built yet. The look of the overlays: colours, team logos, fonts, which graphics show and when.</p></article>
-</section>
+<div class="columns wide-left">
+<article><h2>Themes <span id="themeStatus" class="count"></span></h2>
+<p class="small">A theme is a folder: a page drawn over the picture, and perhaps a control panel for the Stream tab. The built-in ones are a start; the point is to make your own, with an AI assistant if you like: pick <b>New theme from the template</b>, open the folder, and point your assistant at <code>docs/themes.md</code>.</p>
+<div id="themeList" class="tiles themes"></div></article>
+<div class="stack">
+<article><h2>Make your own</h2>
+<div class="field"><label for="newThemeName">Name</label><input id="newThemeName" placeholder="Dolphins 2026"></div>
+<div class="actions"><button id="newTheme" class="primary">New theme from the template</button></div>
+<div class="actions"><button id="openThemes">Open my themes folder</button><button id="reloadThemes">Reload</button></div>
+<p id="themeNote" class="small"></p></article>
+<article><h2>Theme console</h2><pre id="themeLog" class="packet small">Nothing logged yet. A theme's Lanecast.log(…) shows here.</pre></article>
+</div>
+</div></section>
 
 <p id="error" role="alert" hidden></p>
 </main>

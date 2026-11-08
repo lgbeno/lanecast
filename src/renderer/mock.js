@@ -94,6 +94,17 @@
                 };
             })()
         },
+        themes: {
+            list: async () => [
+                { id: 'classic', name: 'Classic', version: '1.0.0', author: 'Lanecast', description: 'A lower third: event and heat, the title, the clock, the lanes.', source: 'built-in', overlay: 'overlay.html', control: null, url: '../../themes/classic/' },
+                { id: 'template', name: 'Template', version: '1.0.0', author: 'Lanecast', description: 'A starting point for your own theme, with a control panel.', source: 'built-in', overlay: 'overlay.html', control: { page: 'control.html', width: 420, height: 96 }, url: '../../themes/template/' }
+            ],
+            active: async () => localStorage.getItem('lanecast-mock:theme') || 'classic',
+            select: async id => { localStorage.setItem('lanecast-mock:theme', id); return id; },
+            create: async () => { throw new Error('Design mode cannot write files; run the app for that'); },
+            openFolder: async () => 'Design mode has no themes folder; run the app for that.',
+            folder: async () => ''
+        },
         store: {
             get: async key => { try { return JSON.parse(localStorage.getItem('lanecast-mock:' + key)); } catch (e) { return null; } },
             set: async (key, value) => { if (value == null) localStorage.removeItem('lanecast-mock:' + key); else localStorage.setItem('lanecast-mock:' + key, JSON.stringify(value)); }
