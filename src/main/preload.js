@@ -41,6 +41,16 @@ contextBridge.exposeInMainWorld('lanecast', {
         mediaBytes: id => invoke('cameras:mediaBytes', id),
         onStatus: callback => on('cameras:status', callback)
     },
+    project: {
+        info: () => invoke('project:info'),
+        new: () => invoke('project:new'),
+        open: () => invoke('project:open'),
+        openPath: file => invoke('project:openPath', file),
+        save: () => invoke('project:save'),
+        saveAs: () => invoke('project:saveAs'),
+        saveTo: file => invoke('project:saveTo', file),
+        onChange: callback => on('project:changed', callback)
+    },
     themes: {
         list: () => invoke('themes:list'),
         active: () => invoke('themes:active'),

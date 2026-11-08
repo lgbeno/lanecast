@@ -38,6 +38,10 @@ Five tabs across the top. Each tab's dot turns green when that part is ready to 
 
 No baud rates or parity to set: each link has one correct setting and the app uses it. A port that was connected when the app closed is reconnected at launch; a port that drops out is reopened when it comes back.
 
+## Projects
+
+Everything a meet's stream needs goes in one file, **File → Save Project** (or the project button at the right end of the tab bar): the cameras and their stand-in photos, a copy of the theme *as it is now*, the theme's settings, the start lists and the switches. Open it on the pool laptop next week, or next season after the theme folder has moved on, and the stream looks exactly as it was: the project's own copy of the theme appears on the Theme tab as "… (project)". `.lanecast` files are plain zips, in case you ever want to look inside.
+
 ## Running it
 
 Needs [Node.js](https://nodejs.org) 20 or newer.

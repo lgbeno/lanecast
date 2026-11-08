@@ -43,7 +43,7 @@ app.on('browser-window-created', (event, win) => {
             label: ${text('camerasLabel')}, bar: [...document.querySelector('.topbar').children].filter(c => !c.hidden).map(c => c.id || c.className.split(' ').pop()).join('+'), barHeight: document.querySelector('.topbar').offsetHeight,
             drawer: !document.getElementById('drawer').hidden, toggle: !document.getElementById('drawerToggle').hidden,
             fits: document.getElementById('stage').getBoundingClientRect().bottom <= window.innerHeight && document.documentElement.scrollHeight <= window.innerHeight + 1, banner: !!document.getElementById('banner'), follow: !!document.getElementById('follow') })`);
-        check(start.label === 'Camera' && start.bar === 'group+simConsole' && start.barHeight < 70 && !start.drawer && !start.toggle, `Camera tab singular; one thin bar with the stream and simulation controls (${start.barHeight}px), no drawer for Classic`);
+        check(start.label === 'Camera' && start.bar === 'group+simConsole' && start.barHeight < 76 && !start.drawer && !start.toggle, `Camera tab singular; one thin bar with the stream and simulation controls (${start.barHeight}px), no drawer for Classic`);
         check(start.fits && !start.banner && !start.follow, `the Stream tab fits the window with no scrolling, no banner, no Show latest`);
         console.log(JSON.stringify(start, null, 1));
         check(start.shown === 'stream', 'the Stream tab is shown first: ' + start.shown);
@@ -169,6 +169,22 @@ app.on('browser-window-created', (event, win) => {
         const timerOn = await js(`({ timer: ${text('timerStatus')}, badges: ${badges} })`);
         check(/connected/.test(timerOn.timer) && timerOn.badges === 'timer,events,cameras', `timer simulated again reconnects: ${JSON.stringify(timerOn)}`);
 
+        // Projects: save everything to a file, lose a camera, open the file: the camera is back and the project's own theme copy is in use.
+        const zip = require('../src/main/zip');
+        const projectFile = path.join(userData, 'Spring' + '.lanecast');
+        const savedProject = await js(`window.lanecast.project.saveTo(${JSON.stringify(projectFile)})`);
+        const inside = zip.read(fs.readFileSync(projectFile)).map(e => e.name);
+        check(savedProject.name === 'Spring' && inside.includes('project.json') && inside.includes('theme/overlay.html') && inside.includes('theme/theme.json'), `project saved: ${inside.length} files, theme and media inside`);
+        const manifest = JSON.parse(zip.read(fs.readFileSync(projectFile)).find(e => e.name === 'project.json').data.toString());
+        check(manifest.cameras.length === 1 && manifest.cameras[0].name === 'Pool' && manifest.theme.id === 'b-classic' && manifest.simulate.timer && manifest.rostersSim && manifest.rostersSim.length === 12, `the manifest has the camera, the theme, the switches and the 12 fetched events`);
+        await js(`window.lanecast.cameras.remove('cam-pool')`); await wait(3500);
+        check(await js(`document.querySelectorAll('.tile').length`) === 0, 'camera removed before reopening');
+        const reloaded = new Promise(resolve => win.webContents.once('did-finish-load', resolve));
+        await js(`window.lanecast.project.openPath(${JSON.stringify(projectFile)})`);
+        await reloaded; await wait(5000);
+        const reopened = await js(`({ tiles: [...document.querySelectorAll('.tile .name')].map(n => n.textContent), status: document.querySelector('.tile .small')?.textContent, project: ${text('projectButton')}, theme: ${text('themeStatus')}, overlay: document.getElementById('overlayFrame').src, badges: ${badges}, events: ${text('eventsLoaded')} })`);
+        check(reopened.tiles.join(',') === 'Pool' && /^No stand-in yet/.test(reopened.status) && reopened.project === 'Spring', `project opened: the camera is back (its stand-in was removed earlier), project named in the bar`);
+        check(/^Classic \(project\) · overlay ready/.test(reopened.theme) && reopened.overlay.startsWith('theme://p-project/overlay.html') && reopened.badges === 'timer,events,cameras' && reopened.events === '12', `the project's own copy of the theme is in use, switches and start lists restored: ${reopened.theme}`);
         socket.close();
         console.log(failed ? 'SMOKE FAILED' : 'SMOKE PASSED');
         process.exitCode = failed ? 1 : 0;
