@@ -135,6 +135,8 @@ input.edit{width:100%;min-width:120px;background:#0c1620;color:var(--text);borde
 
 /* Camera tiles: name, state, a simulate switch and a settings button. */
 .tile figcaption{flex-wrap:wrap}
+.tile figcaption .small{flex:1 1 100%;order:1;white-space:normal;line-height:1.35}      /* the status on its own line, however long the name */
+.tile .reconnect,.tile .gear{order:2}
 .tile .switch{margin-left:auto;font-size:12px}
 .tile .gear{padding:6px 10px}
 .tile .reconnect{padding:6px 10px;border-color:var(--accent);color:var(--accent);background:transparent}
