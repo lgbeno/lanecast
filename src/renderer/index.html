@@ -20,13 +20,13 @@
 <section id="stream" role="tabpanel" aria-labelledby="tab-stream" hidden>
 <div class="program">
 <div class="topbar">
-<div class="group"><button id="goLive" class="primary live">Go Live</button><button id="configure">Configure</button><span id="programStatus" class="small">Idle</span></div>
-<div class="group sim" id="simConsole" hidden><span class="eyebrow">SIMULATION</span>
-<div class="stepper mini"><button id="simEventDown" class="step" type="button" title="Previous event">−</button><input id="simEventNo" type="number" min="1" max="999" aria-label="Event"><button id="simEventUp" class="step" type="button" title="Next event">+</button></div><span class="small">event</span>
-<div class="stepper mini"><button id="simHeatDown" class="step" type="button" title="Previous heat">−</button><input id="simHeatNo" type="number" min="1" max="99" aria-label="Heat"><button id="simHeatUp" class="step" type="button" title="Next heat">+</button></div><span class="small">heat</span>
+<div class="group"><button id="goLive" class="primary live">Go Live</button><button id="configure">Configure</button><span id="programStatus" class="small" hidden>Idle</span></div>
+<div class="group sim" id="simConsole" hidden>
+<div class="labelled"><span class="eyebrow">EVENT</span><div class="stepper mini"><button id="simEventDown" class="step" type="button" title="Previous event">−</button><input id="simEventNo" type="number" min="1" max="999" aria-label="Event"><button id="simEventUp" class="step" type="button" title="Next event">+</button></div></div>
+<div class="labelled"><span class="eyebrow">HEAT</span><div class="stepper mini"><button id="simHeatDown" class="step" type="button" title="Previous heat">−</button><input id="simHeatNo" type="number" min="1" max="99" aria-label="Heat"><button id="simHeatUp" class="step" type="button" title="Next heat">+</button></div></div>
 <button id="simRun" class="latch" type="button" aria-pressed="false" title="From this event and heat: lineup, race, results, next heat, through every event loaded, round and round">Run</button>
-<span id="simSummary" class="small"></span></div>
-<button id="drawerToggle" class="quiet" type="button" hidden aria-pressed="true" title="Show or hide the theme's controls">Controls</button>
+<span id="simSummary" class="small" hidden></span></div>
+<button id="drawerToggle" type="button" hidden aria-pressed="true" title="Show or hide the theme's controls">Theme controls</button>
 </div>
 <div class="work" id="work">
 <div class="stage" id="stage">
@@ -37,6 +37,7 @@
 <aside class="drawer" id="drawer" hidden><div class="grip" id="drawerGrip" title="Drag to resize"></div><div class="drawer-body" id="drawerBody"><iframe id="controlFrame" sandbox="allow-scripts" title="Theme control panel"></iframe></div></aside>
 </div>
 </div>
+<dialog id="themeDialog" class="theme-dialog"><div class="theme-dialog-head"><h3 id="themeDialogTitle">Theme</h3><button id="themeDialogClose" type="button" class="quiet">Close</button></div><iframe id="dialogFrame" sandbox="allow-scripts" title="Theme dialog"></iframe></dialog>
 <dialog id="configureDialog" class="wide"><form method="dialog"><h3>Configure the stream</h3>
 <div class="field"><label for="programCamera">Program camera</label><select id="programCamera"></select></div>
 <h3 class="later">Overlay feed</h3>

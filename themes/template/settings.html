@@ -1,0 +1,70 @@
+<!doctype html>
+<!--
+  Lanecast theme template — a DIALOG.
+
+  Anything too detailed for the control panel goes in a page like this one, popped out as a
+  modal from the control panel (or the overlay) with:
+
+    Lanecast.dialog('settings.html', { title: 'Theme settings', width: 520, height: 520 })
+
+  It is an ordinary page with the same runtime. Settings are saved with Lanecast.saveSettings({…}),
+  kept by Lanecast per theme, and handed to every page of the theme at start and on every change
+  through Lanecast.on('settings', s => …). The shape of the settings object is yours. Images such
+  as team logos can be read from a file input and saved as data URLs (keep them small).
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Template — settings</title>
+<style>
+html, body { margin: 0; background: #121d29; font: 14px system-ui, sans-serif; color: #edf4fb; }
+body { padding: 18px 20px 24px; }
+h2 { font-size: 10px; letter-spacing: 2px; color: #9aaec2; font-weight: 750; margin: 18px 0 8px; }
+h2:first-child { margin-top: 0; }
+.row { display: flex; gap: 12px; align-items: center; margin: 8px 0; }
+label { font-size: 13px; color: #9aaec2; min-width: 120px; }
+input[type=text] { flex: 1; background: #0c1620; color: #edf4fb; border: 1px solid #3a4f63; border-radius: 6px; padding: 8px 10px; font: inherit; }
+input[type=color] { width: 48px; height: 32px; border: 1px solid #3a4f63; border-radius: 6px; background: #0c1620; padding: 2px; }
+.swatches button { width: 28px; height: 28px; border-radius: 50%; border: 2px solid transparent; cursor: pointer; }
+.swatches button[aria-pressed=true] { border-color: #fff; }
+.logo { display: flex; align-items: center; gap: 12px; }
+.logo img { width: 56px; height: 56px; object-fit: contain; background: #0c1620; border-radius: 8px; border: 1px solid #3a4f63; }
+button { background: #1e3041; border: 1px solid #3c5266; border-radius: 6px; color: #f4f8fc; font: 600 13px system-ui; padding: 9px 12px; cursor: pointer; }
+.primary { background: #74e5c1; color: #10261f; border-color: #74e5c1; }
+.foot { display: flex; gap: 10px; justify-content: flex-end; margin-top: 22px; }
+.note { font-size: 12px; color: #9aaec2; }
+</style>
+</head>
+<body>
+<h2>COLOURS</h2>
+<div class="row"><label>Accent</label><input type="color" id="accent" value="#ffcc33"><span class="swatches" id="swatches"></span></div>
+<h2>TITLES</h2>
+<div class="row"><label>Meet name</label><input type="text" id="meet" placeholder="Shown above the lower third, if set"></div>
+<h2>LOGO</h2>
+<div class="row logo"><img id="logoPreview" alt=""><input type="file" id="logoFile" accept="image/png,image/svg+xml,image/jpeg,image/webp"><button id="logoClear" type="button">Remove</button></div>
+<p class="note">Logos are saved into the theme's settings as data; keep them under a few hundred kilobytes.</p>
+<div class="foot"><button id="cancel" type="button">Cancel</button><button id="save" type="button" class="primary">Save</button></div>
+
+<script src="../lanecast-theme.js"></script>
+<script>
+(() => {
+  const $ = id => document.getElementById(id);
+  const SWATCHES = ['#ffcc33', '#74e5c1', '#4ade80', '#60a5fa', '#f472b6', '#fb923c', '#ffffff'];
+  let logo = '';
+  $('swatches').replaceChildren(...SWATCHES.map(c => { const b = document.createElement('button'); b.type = 'button'; b.style.background = c; b.title = c; b.onclick = () => { $('accent').value = c; mark(); }; return b; }));
+  const mark = () => { for (const b of $('swatches').children) b.setAttribute('aria-pressed', String(b.title === $('accent').value)); };
+  $('accent').oninput = mark;
+  // Fill the form from the saved settings (they arrive right after the page says hello).
+  Lanecast.on('settings', s => { if (s.accent) $('accent').value = s.accent; $('meet').value = s.meet || ''; logo = s.logo || ''; $('logoPreview').src = logo; mark(); });
+  $('logoFile').onchange = () => {
+    const file = $('logoFile').files[0]; if (!file) return;
+    if (file.size > 400 * 1024) { alert('That image is over 400 KB; a smaller one, please.'); $('logoFile').value = ''; return; }
+    const reader = new FileReader(); reader.onload = () => { logo = reader.result; $('logoPreview').src = logo; }; reader.readAsDataURL(file);
+  };
+  $('logoClear').onclick = () => { logo = ''; $('logoPreview').src = ''; $('logoFile').value = ''; };
+  $('save').onclick = () => { Lanecast.saveSettings({ accent: $('accent').value, meet: $('meet').value.trim(), logo }); Lanecast.closeDialog(); };
+  $('cancel').onclick = () => Lanecast.closeDialog();
+})();
+</script>
+</body>
+</html>

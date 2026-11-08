@@ -289,11 +289,31 @@
     // The theme's overlay page runs in a frame over the picture, its control page in a box in the deck.
     // Both get the state and the events; either may direct the picture or talk to the other.
     const themes = { list: [], active: null, activeId: null, ready: { overlay: false, control: false }, log: [] };
-    const frames = { overlay: $('overlayFrame'), control: $('controlFrame') };
+    const frames = { overlay: $('overlayFrame'), control: $('controlFrame'), dialog: $('dialogFrame') };
     const toFrame = (which, message) => { if (themes.ready[which]) frames[which].contentWindow?.postMessage(message, '*'); };
-    const toTheme = message => { toFrame('overlay', message); toFrame('control', message); };
+    const toTheme = message => { for (const which of Object.keys(frames)) toFrame(which, message); };
+    // The theme's settings: an object the theme defines, kept per theme, handed to every page at hello and on change.
+    let themeSettings = {};
+    const settingsKey = () => 'theme-settings:' + (themes.activeId || '');
+    async function loadThemeSettings() { try { themeSettings = (await api.store.get(settingsKey())) || {}; } catch (e) { themeSettings = {}; } }
+    /** One of the theme's pages as a modal. */
+    function openThemeDialog(page, title, width, height) {
+        if (!themes.active || typeof page !== 'string' || page.includes('..')) return;
+        themes.ready.dialog = false;
+        const dialog = $('themeDialog');
+        dialog.style.width = Math.min(window.innerWidth - 40, Math.max(320, Number(width) || 520)) + 'px';
+        frames.dialog.style.height = Math.min(window.innerHeight - 120, Math.max(200, Number(height) || 480)) + 'px';
+        $('themeDialogTitle').textContent = title || themes.active.name;
+        frames.dialog.src = `${themes.active.url}${page.replace(/^\/+/, '')}?role=dialog`;
+        if (!dialog.open) dialog.showModal();
+    }
+    function closeThemeDialog() { const dialog = $('themeDialog'); if (dialog.open) dialog.close(); frames.dialog.src = 'about:blank'; themes.ready.dialog = false; }
+    $('themeDialogClose').onclick = closeThemeDialog;
+    $('themeDialog').addEventListener('close', () => { frames.dialog.src = 'about:blank'; themes.ready.dialog = false; });
     function loadTheme(theme) {
-        themes.active = theme; themes.ready = { overlay: false, control: false };
+        closeThemeDialog();
+        themes.active = theme; themes.ready = { overlay: false, control: false, dialog: false };
+        loadThemeSettings();
         frames.overlay.src = theme ? `${theme.url}${theme.overlay}?role=overlay` : 'about:blank';
         $('drawerToggle').hidden = !theme?.control;
         if (theme?.control) {
@@ -312,18 +332,22 @@
     }
     const cameraByRef = ref => cameraList.find(c => c.id === ref) || cameraList.find(c => c.name.toLowerCase() === String(ref).toLowerCase()) || null;
     window.addEventListener('message', e => {
-        const from = e.source === frames.overlay.contentWindow ? 'overlay' : e.source === frames.control.contentWindow ? 'control' : null;
+        const from = e.source === frames.overlay.contentWindow ? 'overlay' : e.source === frames.control.contentWindow ? 'control' : e.source === frames.dialog.contentWindow ? 'dialog' : null;
         const m = e.data; if (!from || !m || typeof m !== 'object') return;
         switch (m.type) {
             case 'ready':
                 themes.ready[from] = true;
-                toFrame(from, { type: 'hello', theme: { id: themes.active?.id, name: themes.active?.name }, size: { width: $('stage').clientWidth, height: $('stage').clientHeight } });
+                toFrame(from, { type: 'hello', theme: { id: themes.active?.id, name: themes.active?.name }, size: { width: $('stage').clientWidth, height: $('stage').clientHeight }, settings: themeSettings });
                 if (lastSent) toFrame(from, JSON.parse(lastSent));
                 renderThemes(); render(); break;
             case 'camera': { const cam = cameraByRef(m.select); if (cam) { programCamera = cam.id; lastSent = ''; render(); } break; }
             case 'layout': setLayout(m); break;
-            case 'control': toFrame('overlay', { type: 'control', data: m.data }); break;      // control panel -> overlay
-            case 'overlay': toFrame('control', { type: 'overlay', data: m.data }); break;      // overlay -> control panel
+            case 'send': for (const which of Object.keys(frames)) if (which !== from) toFrame(which, { type: from, data: m.data }); break;   // to the theme's other pages
+            case 'settings':
+                if (m.data && typeof m.data === 'object') { themeSettings = { ...themeSettings, ...m.data }; api.store.set(settingsKey(), themeSettings).catch(() => {}); toTheme({ type: 'settings', data: themeSettings }); }
+                break;
+            case 'dialog': openThemeDialog(m.page, m.title, m.width, m.height); break;
+            case 'closeDialog': closeThemeDialog(); break;
             case 'log': themes.log.push(`${new Date().toLocaleTimeString()} ${from}: ${String(m.message).slice(0, 300)}`); if (themes.log.length > 60) themes.log.shift(); renderThemes(); break;
         }
     });
@@ -543,7 +567,6 @@
         const has = !!themes.active?.control;
         $('drawer').hidden = !has || !drawer.open;
         $('drawerToggle').setAttribute('aria-pressed', String(drawer.open));
-        $('drawerToggle').textContent = drawer.open ? 'Hide controls' : 'Show controls';
         fitStage(); requestAnimationFrame(fitStage);
     }
     $('drawerToggle').onclick = () => { drawer.open = !drawer.open; api.store.set('drawer', { open: drawer.open, width: drawer.sized ? $('drawer').offsetWidth : null }).catch(() => {}); applyDrawer(); };

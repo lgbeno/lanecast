@@ -13,6 +13,7 @@
     Lanecast.send({ anything })     arrives in the overlay as Lanecast.on('control', m => …)
     Lanecast.on('overlay', m => …)  the overlay's Lanecast.send(...) arrives here
     Lanecast.camera('Wide')         the panel can direct the picture too
+    Lanecast.dialog('settings.html', { title, width, height })   pop out a page for detailed settings
 -->
 <html lang="en">
 <head>
@@ -37,6 +38,10 @@ button[aria-pressed="true"] { background: #ffcc33; border-color: #ffcc33; color:
   <button id="pip" aria-pressed="false">Picture in picture</button>
   <button id="moment">Say hello on the picture</button>
 </div>
+<h2>THEME</h2>
+<div class="stack">
+  <button id="settings">Theme settings…</button>
+</div>
 <h2>CAMERA</h2>
 <div class="stack" id="cams"></div>
 <h2>NOW</h2>
@@ -50,6 +55,8 @@ button[aria-pressed="true"] { background: #ffcc33; border-color: #ffcc33; color:
   toggle('lanes', 'lanes');
   toggle('pip', 'pip');
   $('moment').onclick = () => Lanecast.send({ action: 'moment', text: 'Hello from the control panel' });
+  // Detailed configuration (colours, a logo, titles) lives in a dialog, not in this narrow panel.
+  $('settings').onclick = () => Lanecast.dialog('settings.html', { title: 'Theme settings', width: 520, height: 520 });
   // One button per camera, from the state; the one on the program is lit. A line about where the race is.
   let shown = '';
   Lanecast.on('state', s => {

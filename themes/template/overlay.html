@@ -19,6 +19,7 @@
     Lanecast.on('event.change', e => …)a new event is on the board
     Lanecast.on('race.reset', e => …)  the clock went back to zero after a start (false start, recall)
     Lanecast.on('control', m => …)     a message from this theme's control panel (control.html)
+    Lanecast.on('settings', s => …)    the theme's saved settings (see settings.html), at start and on change
     Lanecast.camera('Wide')            put a camera on the program, by name or id
     Lanecast.layout({ x, y, w, h })    place the camera within the picture, as fractions 0–1 (default: fills it)
 
@@ -46,6 +47,9 @@ html, body { margin: 0; height: 100%; background: transparent; overflow: hidden;
 .lane .place { font-weight: 800; color: var(--accent); }
 .lane .time { font-family: ui-monospace, monospace; font-variant-numeric: tabular-nums; }
 .lanes.hidden { display: none; }
+/* From the settings dialog: a meet name and a logo above the lower third. */
+.meet { display: flex; align-items: center; gap: 1.6vh; margin-bottom: .6vh; font-size: 2.4vh; font-weight: 700; text-shadow: 0 .2vh .6vh rgba(0,0,0,.6); }
+.meet img { height: 6vh; width: auto; }
 @keyframes slide { from { opacity: 0; transform: translateX(-2vh); } to { opacity: 1; transform: none; } }
 
 /* A full-screen moment for the end of a heat. */
@@ -56,6 +60,7 @@ html, body { margin: 0; height: 100%; background: transparent; overflow: hidden;
 </head>
 <body>
 <div class="bug hidden" id="bug">
+  <div class="meet" id="meet" hidden><img id="logo" alt="" hidden><span id="meetName"></span></div>
   <div class="title"><strong id="title">—</strong><span id="eh"></span><div class="clock" id="clock">0:00.0</div></div>
   <div class="lanes" id="lanes"></div>
 </div>
@@ -100,7 +105,15 @@ html, body { margin: 0; height: 100%; background: transparent; overflow: hidden;
   Lanecast.on('race.start', () => Lanecast.camera('Finish'));
   Lanecast.on('heat.finish', () => setTimeout(() => Lanecast.camera('Wide'), 6000));
 
-  // 4. The control panel (control.html) sends whatever messages you like; handle them here.
+  // 4. Settings from the dialog (settings.html): an accent colour, a meet name, a logo. Saved by Lanecast per theme.
+  Lanecast.on('settings', s => {
+    if (s.accent) document.documentElement.style.setProperty('--accent', s.accent);
+    $('meetName').textContent = s.meet || '';
+    $('logo').hidden = !s.logo; if (s.logo) $('logo').src = s.logo;
+    $('meet').hidden = !s.meet && !s.logo;
+  });
+
+  // 5. The control panel (control.html) sends whatever messages you like; handle them here.
   Lanecast.on('control', m => {
     if (m.action === 'lanes') { showLanes = m.on; $('lanes').classList.toggle('hidden', !showLanes); }
     if (m.action === 'moment') moment(m.text || 'Hello from the control panel', 3000);
