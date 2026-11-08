@@ -85,10 +85,14 @@ app.whenReady().then(async () => {
     projects = new Projects({ store, cameras, themes, workDir: path.join(app.getPath('userData'), 'projects'), version: app.getVersion() });
     // A project opened last time keeps its theme copy available.
     const lastProject = store.get('projectPath', null);
-    if (lastProject && fs.existsSync(lastProject) && store.get('theme') === 'p-project') { try { await projects.open(lastProject); } catch (e) { store.set('projectPath', null); } }
+    if (lastProject && !require('node:fs').existsSync(lastProject)) store.set('projectPath', null);                  // moved or deleted since: untitled again
+    else if (lastProject && store.get('theme') === 'p-project') { try { await projects.open(lastProject); } catch (e) { store.set('projectPath', null); } }
     Menu.setApplicationMenu(buildMenu());
     createWindow();
     app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
+}).catch(e => {
+    // Never fail silently with no window: say what went wrong, then leave.
+    console.error(e); dialog.showErrorBox('Lanecast could not start', e.stack || String(e)); app.quit();
 });
 app.on('window-all-closed', () => app.quit());
 
