@@ -77,6 +77,8 @@ app.whenReady().then(async () => {
     session.defaultSession.setPermissionCheckHandler((contents, permission) => allowed.has(permission));
     themes = new Themes({ userDir: path.join(app.getPath('userData'), 'themes') });
     await themes.list();
+    // Themes are followed on disk: one being edited is redrawn as it is saved, and the list keeps up with the folder.
+    stopThemeWatch = themes.watch(ids => send('themes:changed', ids));
     protocol.handle('theme', request => themes.serve(request));
     serial = new SerialRoles({ simulated: { timer: simulated.timer }, onData: (role, bytes) => send('serial:data', role, bytes), onState: (role, state) => send('serial:state', role, state) });
     relay = new Relay({ port: Number(store.get('relayPort', 8080)) || 8080, onStatus: status => send('relay:status', status) });
@@ -164,8 +166,8 @@ ipcMain.handle('project:save', () => projectSave());
 ipcMain.handle('project:saveAs', () => projectSaveAs());
 ipcMain.handle('project:saveTo', (event, file) => projectSaveTo(String(file)));
 ipcMain.handle('project:rename', (event, name) => projectRename(String(name ?? '')));
-let stopNetworkWatch = () => {};
-app.on('before-quit', () => { stopNetworkWatch(); ptz.close(); if (serial) serial.closeAll(); if (relay) relay.stop(); if (cameras) cameras.stop(); if (store) store.flush(); });
+let stopNetworkWatch = () => {}, stopThemeWatch = () => {};
+app.on('before-quit', () => { stopNetworkWatch(); stopThemeWatch(); ptz.close(); if (serial) serial.closeAll(); if (relay) relay.stop(); if (cameras) cameras.stop(); if (store) store.flush(); });
 // However the process ends, go2rtc must not outlive it.
 process.on('exit', () => { if (cameras) cameras.stop(); });
 
@@ -239,7 +241,21 @@ ipcMain.handle('themes:list', () => themes.list());
 ipcMain.handle('themes:active', () => store.get('theme', 'b-classic'));
 ipcMain.handle('themes:select', (event, id) => { if (!themes.get(String(id))) throw new Error('No such theme'); store.set('theme', String(id)); return String(id); });
 ipcMain.handle('themes:create', (event, name) => themes.createFromTemplate(String(name || '')));
-ipcMain.handle('themes:openFolder', async () => { await fs.mkdir(themes.userDir, { recursive: true }); return shell.openPath(themes.userDir); });
+// Open a theme's own folder (one of the user's, or the project's copy); for a built-in theme, or none, the folder the user's themes live in.
+ipcMain.handle('themes:openFolder', async (event, id) => {
+    const theme = id ? themes.get(String(id)) : null, folder = theme && theme.source !== 'built-in' ? theme.folder : themes.userDir;
+    await fs.mkdir(themes.userDir, { recursive: true });
+    return shell.openPath(folder);
+});
+// Remove one of the user's own themes: its folder goes to the Trash, where it can be got back. (LANECAST_DELETE=1, for tests, deletes instead.)
+ipcMain.handle('themes:remove', async (event, id) => {
+    const theme = themes.get(String(id));
+    if (!theme || theme.source !== 'mine') throw new Error('Only a theme of your own can be removed');
+    if (process.env.LANECAST_DELETE === '1') await fs.rm(theme.folder, { recursive: true, force: true }); else await shell.trashItem(theme.folder);
+    if (store.get('theme') === theme.id) store.set('theme', 'b-classic');
+    await themes.list();
+    return true;
+});
 ipcMain.handle('themes:folder', () => themes.userDir);
 ipcMain.handle('store:get', (event, key) => store.get(key));
 ipcMain.handle('store:set', (event, key, value) => { store.set(key, value); });

@@ -116,19 +116,25 @@
 </section>
 
 <section id="theme" role="tabpanel" aria-labelledby="tab-theme" hidden>
-<div class="columns wide-left">
-<article><h2>Themes <span id="themeStatus" class="count"></span></h2>
-<p class="small">A theme is a folder: a page drawn over the picture, and perhaps a control panel for the Stream tab. The built-in ones are a start; the point is to make your own, with an AI assistant if you like: pick <b>New theme from the template</b>, open the folder, and point your assistant at <code>docs/themes.md</code>.</p>
-<div id="themeList" class="tiles themes"></div></article>
-<div class="stack">
-<article><h2>Make your own</h2>
-<div class="field"><label for="newThemeName">Name</label><input id="newThemeName" placeholder="Dolphins 2026"></div>
-<div class="actions"><button id="newTheme" class="primary">New theme from the template</button></div>
-<div class="actions"><button id="openThemes">Open my themes folder</button><button id="reloadThemes">Reload</button></div>
-<p id="themeNote" class="small"></p></article>
-<article><h2>Theme console</h2><pre id="themeLog" class="packet small">Nothing logged yet. A theme's Lanecast.log(…) shows here.</pre></article>
+<div class="columns pane-layout">
+<article id="themeFind" class="theme-find">
+<div id="themeList" class="found"></div>
+<div class="actions manual"><button id="newThemeOpen" type="button" class="quiet" title="Start a theme of your own from the template">New theme…</button></div>
+</article>
+<article class="theme-now">
+<p id="themeStatus" class="theme-now-head"><strong id="themeName">No theme</strong><span id="themeState"></span></p>
+<p id="themeAbout" class="small"></p>
+<div class="actions"><button id="openThemes" type="button" hidden>Open folder</button><button id="reloadThemes" type="button" class="quiet" title="Read the theme's files again. Your own themes do this by themselves as you save.">Reload</button></div>
+<div id="themeConsole" hidden><div class="theme-console-head"><h3>Console</h3><button id="themeLogClear" type="button" class="quiet">Clear</button></div><pre id="themeLog" class="packet small"></pre></div>
+</article>
 </div>
-</div></section>
+<dialog id="newThemeDialog"><form method="dialog"><h3>New theme</h3>
+<div class="field"><label for="newThemeName">Name</label><input id="newThemeName" placeholder="Dolphins 2026"></div>
+<p class="small">It starts as a copy of the template, in a folder of its own, and is switched to. Edit its files, by hand or with an AI assistant pointed at <code>docs/themes.md</code>; the stream follows as you save.</p>
+<p id="themeNote" class="small"></p>
+<div class="actions cd-foot"><span></span><span><button id="newThemeCancel" type="button">Cancel</button> <button id="newTheme" type="button" class="primary">Create</button></span></div>
+</form></dialog>
+</section>
 
 <p id="error" role="alert" hidden></p>
 <dialog id="projectDialog"><form method="dialog"><h3>Project</h3>

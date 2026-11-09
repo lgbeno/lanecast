@@ -120,6 +120,8 @@
             select: async id => { localStorage.setItem('lanecast-mock:theme', id); return id; },
             create: async () => { throw new Error('Design mode cannot write files; run the app for that'); },
             openFolder: async () => 'Design mode has no themes folder; run the app for that.',
+            remove: async () => { throw new Error('Design mode cannot remove files; run the app for that'); },
+            onChange: cb => on('themes:changed', cb),
             folder: async () => ''
         },
         store: {
