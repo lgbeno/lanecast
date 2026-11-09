@@ -157,12 +157,13 @@ What the user chooses is kept with `Lanecast.saveSettings({ accent: '#ffcc33', l
 
 - **Everything simulated:** Stream tab, Simulation control, Run. The simulated meet fires every event: lineup, start, splits, finishes, heat and event finish, about every 30–40 s.
 - **Your pool:** Camera tab → Simulate a camera → choose a photo from where the camera will stand; now your overlay is judged against the real view.
-- **Without Lanecast open:** open `overlay.html` straight in a browser. The runtime connects to Lanecast's feed on `ws://localhost:8080/` (or `?feed=ws://host:port/`) and the page gets the same messages; the director calls do nothing there. This is also how an OBS browser source would use a theme.
+- **As a page on its own:** open `overlay.html` straight in a browser, with Lanecast running. The runtime connects to Lanecast's feed on `ws://localhost:8080/` (or `?feed=ws://host:port/`) and the page gets the same messages; the director calls do nothing there. This is also how an OBS browser source would use a theme.
+- **No app at all:** open `preview.html?theme=<folder>`, which sits beside the themes (in `themes/` here, and in the app's data folder beside your own). It plays a scripted event into the theme, round and round, and logs every camera cut, layout, position and saved setting the theme asks for. `&speed=3` runs it faster; `&at=lineup`, `&at=racing` or `&at=results` starts at that moment.
 - **Design mode:** `python3 -m http.server` in the repository, then `src/renderer/index.html` in a browser, shows the whole window with the simulated meet; themes load from `themes/`.
 
 ## Rules of the frame
 
-- The frames are sandboxed: no access to Lanecast's own page, no `localStorage`, no network beyond what the page itself loads. Everything a theme needs should be in its folder.
+- The frames are sandboxed: no access to Lanecast's own page, no `localStorage` or other storage (it throws), no `alert`, `confirm` or `prompt` (they do nothing). Everything a theme needs should be in its folder; do not load fonts, scripts or images from the internet.
 - The overlay cannot be clicked; the control panel can.
 - Leave `color-scheme` alone (don't set it to `dark`): the frame is transparent only while its scheme matches the one Lanecast gives it.
 - A theme that throws in a handler keeps running; look at the Theme tab's console.
@@ -170,4 +171,6 @@ What the user chooses is kept with `Lanecast.saveSettings({ accent: '#ffcc33', l
 
 ## For AI assistants
 
-If you are helping someone make a theme: copy `themes/template/` (or ask them to press **New theme…** on the Theme tab, then **Open folder**), keep the `../lanecast-theme.js` script tag, draw with HTML/CSS in `vh`, subscribe to `state` for what is on the board and to the events for what just happened, and test with everything simulated. The messages above are the whole interface; there is nothing else to learn. The repository has a skill for this at `.claude/skills/lanecast-theme/SKILL.md`.
+There is a set of documents written for you: [a brief](agents/making-a-theme.md) (what to ask, where files go, the order to build in, how to see your work, the checklist for done), [every message with examples](agents/theme-messages.md), and [a cookbook](agents/theme-cookbook.md). `themes/preview.html?theme=<folder>` plays a scripted heat into a theme with no app and no meet, and logs what the theme asks for; look at your work there before handing it over.
+
+In short, if you are helping someone make a theme: copy `themes/template/` (or ask them to press **New theme…** on the Theme tab, then **Open folder**), keep the `../lanecast-theme.js` script tag, draw with HTML/CSS in `vh`, subscribe to `state` for what is on the board and to the events for what just happened, and test with everything simulated. The messages above are the whole interface; there is nothing else to learn. The repository has a skill for this at `.claude/skills/lanecast-theme/SKILL.md`.

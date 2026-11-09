@@ -10,6 +10,8 @@ const path = require('node:path');
 
 const BUILTIN = path.join(__dirname, '..', '..', 'themes');
 const RUNTIME = path.join(BUILTIN, 'lanecast-theme.js');
+// What sits beside the themes: the runtime every theme page loads as ../lanecast-theme.js, and the page that previews a theme without the app.
+const KIT = ['lanecast-theme.js', 'preview.html'];
 const MIME = { html: 'text/html; charset=utf-8', js: 'text/javascript; charset=utf-8', mjs: 'text/javascript; charset=utf-8', css: 'text/css; charset=utf-8', json: 'application/json', svg: 'image/svg+xml',
     png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', webp: 'image/webp', mp4: 'video/mp4', webm: 'video/webm', mp3: 'audio/mpeg', wav: 'audio/wav', ogg: 'audio/ogg',
     woff: 'font/woff', woff2: 'font/woff2', ttf: 'font/ttf', otf: 'font/otf', txt: 'text/plain; charset=utf-8', md: 'text/plain; charset=utf-8' };
@@ -69,6 +71,19 @@ class Themes {
             return new Response(body, { status: 200, headers: { 'Content-Type': type, 'Access-Control-Allow-Origin': '*', 'Cache-Control': 'no-store' } });
         } catch (e) { return new Response('Not found', { status: 404 }); }
     }
+    /** Keep the runtime and the preview page beside the user's themes, current with this version of the app. The app itself serves the
+     *  runtime to a theme it shows; these copies are for everything else: the theme opened in a browser or as an OBS browser source, and
+     *  preview.html, which plays a race into a theme with no app and no meet (how someone, or an AI assistant, sees their work). */
+    async ensureKit() {
+        try {
+            await fsp.mkdir(this.userDir, { recursive: true });
+            for (const name of KIT) {
+                const from = await fsp.readFile(path.join(BUILTIN, name)), to = path.join(this.userDir, name);
+                const have = await fsp.readFile(to).catch(() => null);
+                if (!have || !have.equals(from)) await fsp.writeFile(to, from);
+            }
+        } catch (e) { /* a themes folder that cannot be written: the app still shows themes */ }
+    }
     /** Tell when themes change on disk: onChange(ids) with the ids of the themes whose files were touched ('*' when the shared runtime was).
      *  The list is to be read again either way, since a theme may have come or gone. This is what lets the window follow a theme as
      *  it is edited, with nobody pressing Reload. Returns a function that stops the watch. */
@@ -78,7 +93,7 @@ class Themes {
         const first = file => String(file || '').split(/[\\/]/)[0];
         const on = (dir, idOf) => { try { watchers.push(fs.watch(dir, { recursive: true }, (event, file) => report(idOf(first(file))))); } catch (e) { /* not a folder that can be watched (inside the packaged app, say) */ } };
         try { fs.mkdirSync(this.userDir, { recursive: true }); } catch (e) { /* it will be made when a theme is */ }
-        on(this.userDir, name => name ? 'u-' + slug(name) : '');
+        on(this.userDir, name => name && !KIT.includes(name) ? 'u-' + slug(name) : '');
         on(BUILTIN, name => name === 'lanecast-theme.js' ? '*' : name && !name.includes('.') ? 'b-' + slug(name) : '');      // in development the built-in ones are edited too
         return () => { for (const w of watchers) { try { w.close(); } catch (e) { /* closed */ } } clearTimeout(timer); };
     }
@@ -87,7 +102,7 @@ class Themes {
         const folder = slug(name); if (!folder) throw new Error('Give the theme a name');
         const to = path.join(this.userDir, folder);
         if (fs.existsSync(to)) throw new Error(`A theme folder called ${folder} already exists`);
-        await fsp.mkdir(this.userDir, { recursive: true });
+        await this.ensureKit();
         await fsp.cp(path.join(BUILTIN, 'template'), to, { recursive: true });
         const manifest = path.join(to, 'theme.json'), m = JSON.parse(await fsp.readFile(manifest, 'utf8'));
         m.name = String(name).trim(); m.author = ''; m.description = 'My theme, started from the Lanecast template.';

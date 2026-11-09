@@ -1,0 +1,183 @@
+<!doctype html>
+<!--
+  Lanecast theme preview: see a theme react to a race without Lanecast, a timing console or a meet.
+
+  Open this file in a browser (straight from disk is fine) with the theme's folder name:
+
+      preview.html?theme=template            the folder beside this file
+      preview.html?theme=my-theme&speed=3    three times as fast
+      preview.html?theme=my-theme&control=   no control panel
+      preview.html?theme=my-theme&at=results start at a moment: lineup | racing | results
+
+  Served by any static web server (python3 -m http.server in this folder, say) the theme's frames are exactly as strict as in
+  Lanecast. Opened from disk they are a little looser, because a browser will not let the strict kind read local files.
+
+  It stands in for the app: it loads the theme's overlay (and control panel) in frames, as Lanecast does,
+  and plays a scripted two-heat event into them, round and round, with the same messages the app sends
+  (docs/agents/theme-messages.md). What the theme asks of the app (cut a camera, place it, cue a
+  position, steer, open a dialog, save settings) is shown here and written to the log under the picture.
+
+  The picture is a stand-in: a grey box where the camera would be, labelled with the camera's name.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Lanecast theme preview</title>
+<style>
+html, body { margin: 0; background: #0b1119; color: #e8eef5; font: 13px/1.4 system-ui, sans-serif; }
+header { display: flex; align-items: center; gap: 12px; padding: 10px 14px; border-bottom: 1px solid #22303f; flex-wrap: wrap; }
+header strong { font-size: 14px; } header .grow { flex: 1; }
+button, select { background: #1e3041; border: 1px solid #3c5266; border-radius: 6px; color: #f4f8fc; font: 600 12px system-ui; padding: 6px 10px; cursor: pointer; }
+#now { color: #9aaec2; font-variant-numeric: tabular-nums; }
+.row { display: flex; gap: 12px; padding: 12px 14px; align-items: flex-start; }
+.stage { position: relative; flex: 1; aspect-ratio: 16 / 9; background: #05080c; border: 1px solid #22303f; border-radius: 10px; overflow: hidden; min-width: 0; }
+#camera { position: absolute; left: 0; top: 0; width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; color: #6f8296; font-size: 2.2vw; letter-spacing: .1em;
+  background: repeating-linear-gradient(135deg, #17222e 0 22px, #1b2835 22px 44px); transition: left .4s, top .4s, width .4s, height .4s; box-sizing: border-box; border: 1px solid #2b3b4c; }
+.stage iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; background: transparent; pointer-events: none; color-scheme: light; }
+#control { flex: none; width: 340px; align-self: stretch; border: 1px solid #22303f; border-radius: 10px; background: #111a25; color-scheme: light; }
+#control[hidden] { display: none; }
+#log { margin: 0 14px 14px; padding: 10px 12px; background: #0c141d; border: 1px solid #22303f; border-radius: 8px; color: #9aaec2; font: 12px/1.5 ui-monospace, Menlo, monospace; max-height: 9.5em; overflow: auto; white-space: pre-wrap; }
+dialog { padding: 0; border: 1px solid #3c5266; border-radius: 10px; background: #111a25; color: #e8eef5; }
+dialog::backdrop { background: rgba(0, 0, 0, .6); }
+dialog header { padding: 8px 8px 8px 14px; } dialog iframe { display: block; border: 0; background: transparent; color-scheme: light; }
+</style>
+</head>
+<body>
+<header>
+  <strong id="name">Theme preview</strong>
+  <span id="now">loading…</span>
+  <span class="grow"></span>
+  <button id="pause" type="button">Pause</button>
+  <button id="next" type="button" title="Jump to the next moment: lineup, start, results">Next moment</button>
+  <select id="speed" title="How fast the race runs"><option value="1">1×</option><option value="3">3×</option><option value="8">8×</option></select>
+</header>
+<div class="row">
+  <div class="stage"><div id="camera">CAMERA</div><iframe id="overlay" sandbox="allow-scripts" title="Overlay"></iframe></div>
+  <iframe id="control" sandbox="allow-scripts" title="Control panel" hidden></iframe>
+</div>
+<pre id="log">What the theme asks of the app shows here.</pre>
+<dialog id="dialog"><header><strong id="dialogTitle"></strong><span class="grow"></span><button id="dialogClose" type="button">Close</button></header><iframe id="dialogFrame" sandbox="allow-scripts" title="Theme dialog"></iframe></dialog>
+
+<script>
+(() => {
+  'use strict';
+  const $ = id => document.getElementById(id), query = new URLSearchParams(location.search);
+  const theme = (query.get('theme') || 'template').replace(/[^\w.-]/g, ''), base = theme + '/';
+  const frames = { overlay: $('overlay'), control: $('control'), dialog: $('dialogFrame') }, ready = { overlay: false, control: false, dialog: false };
+  // Lanecast shows a theme's pages in frames that may run scripts and nothing more (no storage, no reaching out of the frame), and so does this
+  // page when it is served over http. Opened straight from disk, a browser will not let so strict a frame read the theme's own files, so there
+  // the frames are looser, and the page says so: something that works here from disk may still be refused by Lanecast (localStorage, for one).
+  const fromDisk = location.protocol === 'file:';
+  if (fromDisk) for (const frame of Object.values(frames)) frame.setAttribute('sandbox', 'allow-scripts allow-same-origin');
+  let settings = {}, lastState = null;
+  const log = text => { const el = $('log'); el.textContent = (el.dataset.used ? el.textContent + '\n' : '') + new Date().toLocaleTimeString() + '  ' + text; el.dataset.used = '1'; el.scrollTop = el.scrollHeight; };
+  const to = (which, message) => { if (ready[which]) frames[which].contentWindow.postMessage(message, '*'); };
+  const toAll = message => { for (const which of Object.keys(frames)) to(which, message); };
+
+  // ---- the cameras the pretend app has: one that can be steered, with positions, and one that cannot
+  const cameras = [{ id: 'cam-wide', name: 'Wide', steerable: true, positions: ['Whole pool', 'Blocks', 'Finish line'] }, { id: 'cam-finish', name: 'Finish', steerable: false, positions: [] }];
+  let camera = cameras[0].id;
+  const cameraBy = ref => cameras.find(c => c.id === ref) || cameras.find(c => c.name.toLowerCase() === String(ref).toLowerCase()) || null;
+  const showCamera = () => { $('camera').textContent = 'CAMERA · ' + cameraBy(camera).name.toUpperCase(); };
+
+  // ---- what the theme asks of the app
+  window.addEventListener('message', e => {
+    const from = Object.keys(frames).find(which => e.source === frames[which].contentWindow), m = e.data;
+    if (!from || !m || typeof m !== 'object') return;
+    if (m.type === 'ready') {
+      ready[from] = true;
+      to(from, { type: 'hello', theme: { id: 'preview-' + theme, name: theme }, size: { width: $('overlay').clientWidth, height: $('overlay').clientHeight }, settings });
+      if (from === 'overlay' && !started) { started = true; begin(true); jump(); }       // the meet starts when the overlay is there to see it
+      else if (lastState) to(from, lastState);
+    }
+    else if (m.type === 'camera') { const c = cameraBy(m.select); if (c) { camera = c.id; showCamera(); log(`${from}: Lanecast.camera(${JSON.stringify(m.select)})  →  ${c.name} is on`); } else log(`${from}: Lanecast.camera(${JSON.stringify(m.select)})  →  no such camera (ignored). The preview has Wide and Finish.`); }
+    else if (m.type === 'layout') {
+      const part = (v, d) => Number.isFinite(Number(v)) ? Math.max(0, Math.min(1, Number(v))) : d, box = $('camera').style;
+      box.left = part(m.x, 0) * 100 + '%'; box.top = part(m.y, 0) * 100 + '%'; box.width = part(m.w, 1) * 100 + '%'; box.height = part(m.h, 1) * 100 + '%';
+      log(`${from}: Lanecast.layout(${JSON.stringify({ x: m.x, y: m.y, w: m.w, h: m.h, fit: m.fit })})`);
+    }
+    else if (m.type === 'position') {
+      const c = m.camera === null || m.camera === undefined ? cameraBy(camera) : cameraBy(m.camera);
+      const known = c && c.positions.some(p => p.toLowerCase() === String(m.name).toLowerCase());
+      log(`${from}: Lanecast.position(${JSON.stringify(m.name)}${m.camera ? ', ' + JSON.stringify(m.camera) : ''})  →  ` + (!c ? 'no such camera' : !c.steerable ? `${c.name} cannot be steered` : known ? `${c.name} goes to ${m.name}` : `${c.name} has no position of that name (it has: ${c.positions.join(', ')})`));
+    }
+    else if (m.type === 'steer') { if (m.pan || m.tilt || m.zoom) log(`${from}: Lanecast.steer(${JSON.stringify({ pan: m.pan, tilt: m.tilt, zoom: m.zoom })})`); else log(`${from}: Lanecast.steer()  →  stop`); }
+    else if (m.type === 'send') { for (const which of Object.keys(frames)) if (which !== from) to(which, { type: from, data: m.data }); log(`${from}: Lanecast.send(${JSON.stringify(m.data)})`); }
+    else if (m.type === 'settings') { if (m.data && typeof m.data === 'object') { settings = { ...settings, ...m.data }; toAll({ type: 'settings', data: settings }); log(`${from}: Lanecast.saveSettings(${JSON.stringify(m.data).slice(0, 160)})`); } }
+    else if (m.type === 'dialog') {
+      if (typeof m.page !== 'string' || m.page.includes('..')) return;
+      ready.dialog = false; $('dialogTitle').textContent = m.title || theme;
+      frames.dialog.style.width = Math.max(320, Number(m.width) || 520) + 'px'; frames.dialog.style.height = Math.max(200, Number(m.height) || 480) + 'px';
+      frames.dialog.src = base + m.page.replace(/^\/+/, '') + '?role=dialog'; if (!$('dialog').open) $('dialog').showModal();
+      log(`${from}: Lanecast.dialog(${JSON.stringify(m.page)})`);
+    }
+    else if (m.type === 'closeDialog') closeDialog();
+    else if (m.type === 'log') log(`${from}: ${m.message}`);
+  });
+  const closeDialog = () => { if ($('dialog').open) $('dialog').close(); frames.dialog.src = 'about:blank'; ready.dialog = false; };
+  $('dialogClose').onclick = closeDialog; $('dialog').addEventListener('close', () => { frames.dialog.src = 'about:blank'; ready.dialog = false; });
+
+  // ---- the meet: one event of two heats, six swimmers each, a 100 (so one split and a finish), then the next event
+  const EVENTS = [{ title: 'Girls 11-12 100 Free', first: ['Ana Ruiz', 'Bea Stone', 'Cy Vale', 'Dee Okoro', 'Eve Lindqvist', 'Fay Tanaka'] }, { title: 'Boys 11-12 100 Free', first: ['Gus Moreau', 'Hal Novak', 'Ian Castell', 'Jo Baptiste', 'Kit Aldana', 'Leo Farrow'] }];
+  const TEAMS = ['DOLF', 'RAYS', 'WAVE', 'OTTR'];
+  const names = (event, heat) => Array.from({ length: 10 }, (_, i) => i >= 2 && i <= 7 ? { name: EVENTS[(event - 12) % 2].first[(i - 2 + heat - 1) % 6], team: TEAMS[(i + heat + event) % 4] } : null);
+  const finals = (event, heat) => { const order = [3, 4, 2, 5, 6, 7].sort((a, b) => ((a * 7 + heat * 3 + event) % 6) - ((b * 7 + heat * 3 + event) % 6)); return Object.fromEntries(order.map((lane, i) => [lane, 2000 + i * 61 + heat * 13])); };   // hundredths, by lane index
+  const clockText = cs => `${Math.floor(cs / 6000)}:${String(Math.floor(cs % 6000 / 100)).padStart(2, '0')}.${Math.floor(cs % 100 / 10)}`;
+  const timeText = cs => `${Math.floor(cs / 6000)}:${String(Math.floor(cs % 6000 / 100)).padStart(2, '0')}.${String(cs % 100).padStart(2, '0')}`;
+  const LINEUP = 400, RESULTS = 500, SPLIT_SHOWS = 300;        // hundredths: before the start; after the last finish; how long a split stays on a lane
+  let event = 12, heat = 1, t = 0, phase = 'lineup', told = { splits: {}, finishes: {} }, paused = false, started = false, last = performance.now(), sent = '';
+  const fire = (name, fields) => toAll({ type: 'event', v: 2, name, ...fields });
+  const entry = lane => names(event, heat)[lane];
+  function begin(firstHeatOfEvent) {
+    t = 0; phase = 'lineup'; told = { splits: {}, finishes: {} }; sent = '';
+    const title = EVENTS[(event - 12) % 2].title;
+    if (firstHeatOfEvent) fire('event.change', { event, title, heats: 2 });
+    fire('heat.lineup', { event, heat, title, lanes: names(event, heat).map((n, i) => n && { lane: i + 1, swimmer: n.name, team: n.team }).filter(Boolean) });
+  }
+  function tick() {
+    const title = EVENTS[(event - 12) % 2].title, fin = finals(event, heat), race = t - LINEUP, lastFinish = Math.max(...Object.values(fin));
+    if (phase === 'lineup' && race >= 0) { phase = 'racing'; fire('race.start', { event, heat, title }); }
+    const places = Object.entries(fin).sort((a, b) => a[1] - b[1]).map(([lane]) => Number(lane));
+    const lanes = Array.from({ length: 10 }, (_, i) => {
+      const who = entry(i), final = fin[i], lane = { lane: i + 1, name: who ? who.name : '', team: who ? who.team : '', time: '', place: null, followsClock: false };
+      if (!who || race < 0) return lane;
+      const split = Math.round(final * 0.48);
+      if (race >= final) { lane.time = timeText(final); lane.place = places.indexOf(i) + 1; if (!told.finishes[i]) { told.finishes[i] = true; fire('lane.finish', { event, heat, lane: i + 1, swimmer: who.name, team: who.team, place: lane.place, time: lane.time }); } }
+      else if (race >= split && race < split + SPLIT_SHOWS) { lane.time = timeText(split); if (!told.splits[i]) { told.splits[i] = true; fire('lane.split', { event, heat, lane: i + 1, swimmer: who.name, team: who.team, time: lane.time }); } }
+      else lane.followsClock = true;
+      return lane;
+    });
+    if (phase === 'racing' && race >= lastFinish) {
+      phase = 'finished';
+      fire('heat.finish', { event, heat, title, results: places.map((i, k) => ({ lane: i + 1, swimmer: entry(i).name, team: entry(i).team, place: k + 1, time: timeText(fin[i]) })) });
+      if (heat === 2) fire('event.finish', { event, title, heats: 2 });
+    }
+    const clock = race < 0 ? '0:00.0' : clockText(Math.min(race, lastFinish + 150));
+    lastState = { type: 'state', v: 2, event, heat, heats: 2, title, clock, running: phase === 'racing', phase, lanes, cameras, camera };
+    const text = JSON.stringify(lastState);
+    if (text !== sent) { sent = text; toAll(lastState); }                // as the app does: only when something changed
+    $('now').textContent = `event ${event} heat ${heat} · ${phase} · ${clock}`;
+    if (phase === 'finished' && race >= lastFinish + RESULTS) { if (heat === 2) { heat = 1; event = event === 12 ? 13 : 12; begin(true); } else { heat = 2; begin(false); } }
+  }
+  const speed = () => Number($('speed').value) || 1;
+  setInterval(() => { const now = performance.now(), dt = now - last; last = now; if (paused || !started) return; t += dt / 10 * speed(); tick(); }, 100);
+  $('pause').onclick = () => { paused = !paused; $('pause').textContent = paused ? 'Play' : 'Pause'; };
+  $('next').onclick = () => { if (!started) return; const lastFinish = Math.max(...Object.values(finals(event, heat))); t = phase === 'lineup' ? LINEUP : phase === 'racing' ? LINEUP + lastFinish : LINEUP + lastFinish + RESULTS; tick(); };
+  if (query.get('speed')) $('speed').value = query.get('speed');
+
+  // ---- load the theme: its theme.json says which pages (read when the browser allows it; else the usual names)
+  const start = manifest => {
+    const overlayPage = (manifest && manifest.overlay) || 'overlay.html';
+    const controlPage = query.has('control') ? query.get('control') : manifest ? (typeof manifest.control === 'string' ? manifest.control : manifest.control ? manifest.control.page || 'control.html' : '') : 'control.html';
+    $('name').textContent = 'Preview · ' + ((manifest && manifest.name) || theme) + (fromDisk ? '  (from disk: frames less strict than in Lanecast)' : '');
+    frames.overlay.src = base + overlayPage + '?role=overlay';
+    if (controlPage) { $('control').hidden = false; if (manifest && manifest.control && manifest.control.width) $('control').style.width = Math.max(240, manifest.control.width) + 'px'; frames.control.src = base + controlPage + '?role=control'; }
+    showCamera();
+    setTimeout(() => { if (!started) { started = true; begin(true); jump(); } }, 3000);     // an overlay that never says it is ready: start anyway
+  };
+  const jump = () => { const at = query.get('at'); if (at === 'racing' || at === 'results') { $('next').click(); if (at === 'results') $('next').click(); } };
+  fetch(base + 'theme.json').then(r => r.ok ? r.json() : null).then(start, () => start(null));       // opened from disk, a browser may refuse the read: then overlay.html and control.html are assumed
+})();
+</script>
+</body>
+</html>
