@@ -191,6 +191,8 @@ ipcMain.handle('cameras:access', async () => {
 ipcMain.handle('cameras:list', () => cameras.list());
 // Cameras that announce themselves on any adapter, each with whether it can be reached and, if not, what to set.
 ipcMain.handle('cameras:discover', () => require('./discover').discover());
+// When macOS shut the search out: open the one settings pane where the person allows it. A fixed address, nothing the window chooses.
+ipcMain.handle('cameras:openNetworkPrivacy', () => process.platform === 'darwin' ? shell.openExternal('x-apple.systempreferences:com.apple.preference.security?Privacy_LocalNetwork').then(() => true) : false);
 ipcMain.handle('cameras:add', (event, camera) => cameras.add(camera || {}));
 ipcMain.handle('cameras:update', (event, id, patch) => cameras.update(String(id), patch || {}));
 ipcMain.handle('cameras:remove', (event, id) => cameras.remove(String(id)));

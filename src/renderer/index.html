@@ -85,13 +85,14 @@
 <div id="cameraList" class="tiles"></div>
 <p id="noCameras" class="small">No cameras yet. Add one on the right. Each camera has its own switch between the real picture and a stand-in photo or video, and its own settings.</p></article>
 <article id="camAdd"><h2>Add a camera</h2>
-<h3>On this computer</h3>
-<p class="small">Webcams, capture cards that show up as webcams, and an iPhone as a camera (Continuity Camera on a Mac).</p>
+<div class="actions"><button id="findDevices" class="primary" type="button">Find cameras</button><span id="searchStatus" class="small"></span></div>
+<p class="small">Looks on this computer (webcams, capture cards that show up as webcams, an iPhone as a camera) and on the network (cameras announcing NDI, RTSP or ONVIF), on every adapter.</p>
+<h3 class="later">On this computer</h3>
 <div id="deviceList" class="devices"></div>
-<div class="actions"><button id="findDevices">Find cameras</button><span id="deviceNote" class="small"></span></div>
+<p id="deviceNote" class="small"></p>
 <h3 class="later">On the network</h3>
-<div class="actions"><button id="searchNetwork" type="button">Search the network</button><span id="searchStatus" class="small"></span></div>
-<div id="foundList" class="found"></div>
+<div id="foundList" class="found"><p class="small">Press Find cameras to look.</p></div>
+<h3 class="later">By address</h3>
 <div class="field"><label for="camName">Name</label><input id="camName" placeholder="Pool, wide"></div>
 <div class="field"><label for="camUrl">Address</label><input id="camUrl" placeholder="rtsp://192.168.1.50/1" spellcheck="false"></div>
 <div class="actions"><button id="camAddButton" class="primary">Add</button><span id="camAddStatus" class="small"></span></div>

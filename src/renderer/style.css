@@ -130,7 +130,8 @@ input.edit{width:100%;min-width:120px;background:#0c1620;color:var(--text);borde
 
 /* This computer's cameras, each with an Add button. */
 .devices{display:grid;gap:6px;margin:6px 0}
-.found{display:grid;gap:8px;margin:8px 0}.found:empty{display:none}
+.found{display:grid;gap:8px;margin:8px 0}.found:empty{display:none}.found>p{margin:0}
+#deviceNote{margin:6px 0 0}#deviceNote:empty{display:none}
 .found-item{border:1px solid var(--line);border-radius:8px;background:#0c1620;padding:10px 12px;font-size:13px}
 .found-head{display:flex;align-items:center;gap:10px}.found-head .small{flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.found-head button{padding:7px 12px}
 .found-item p{margin:8px 0 0;line-height:1.4}
