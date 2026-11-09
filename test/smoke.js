@@ -93,11 +93,32 @@ app.on('browser-window-created', (event, win) => {
         check(auto.manual && !auto.dialog && auto.columns[0] < auto.columns[1], 'finding is on the left, the cameras on the right; adding by hand waits behind Add manually…');
         // A second camera, by hand: Add manually… opens the dialog, Add closes it; the tab turns plural.
         await js(`document.getElementById('manualAdd').click()`); await wait(300);
-        const manual = await js(`({ open: document.getElementById('manualDialog').open, sim: !!document.getElementById('manualDialog').querySelector('#camAddSim') })`);
+        const manual = await js(`({ open: document.getElementById('manualDialog').open, fields: [...document.getElementById('manualDialog').querySelectorAll('input')].map(i => i.id).join() })`);
         await js(`document.getElementById('camName').value = 'Finish'; document.getElementById('camUrl').value = 'rtsp://127.0.0.1:1/none'`); await click('camAddButton', 1500);
-        check(manual.open && manual.sim && !(await js(`document.getElementById('manualDialog').open`)), 'Add manually… holds the address fields and the simulated camera; adding closes it');
+        check(manual.open && manual.fields === 'camName,camUrl' && !(await js(`document.getElementById('manualDialog').open`)), 'Add manually… is just a name and an address; adding closes it');
         const stacked = await js(`[...document.querySelectorAll('#cameraList .tile')].map(t => { const r = t.getBoundingClientRect(); return [Math.round(r.x), Math.round(r.y)]; })`);
         check(stacked.length === 2 && stacked[0][0] === stacked[1][0] && stacked[1][1] > stacked[0][1], `the cameras are stacked one under another, not side by side: ${JSON.stringify(stacked)}`);
+        // The found list always offers a simulated camera. Add opens its settings; ✕ in the corner of its box removes it, asking once more in place.
+        const tileNames = () => js(`[...document.querySelectorAll('#cameraList .tile .name')].map(n => n.textContent)`);
+        const removeTile = async name => { const pick = `[...document.querySelectorAll('#cameraList .tile')].find(t => t.querySelector('.name').textContent === ${JSON.stringify(name)}).querySelector('.remove')`; await js(`${pick}.click()`); await wait(200); const asked = await js(`${pick}.textContent`); await js(`${pick}.click()`); await wait(1200); return asked; };
+        const offer = await js(`(() => { const item = document.querySelector('#foundList .found-item.simulated'); if (!item) return null; const out = { name: item.querySelector('strong').textContent, last: item === document.querySelector('#foundList').lastElementChild }; item.querySelector('button').click(); return out; })()`); await wait(1500);
+        const simAdded = await js(`({ dialog: document.getElementById('cameraDialog').open, title: ${text('cameraDialogTitle')}, removeInside: !!document.getElementById('cdRemove') })`);
+        await js(`document.getElementById('cdCancel').click()`); await wait(300);
+        check(offer && offer.name === 'Simulated camera' && offer.last && simAdded.dialog && simAdded.title === 'Simulated camera' && (await tileNames()).join() === 'Pool,Finish,Simulated camera', 'the found list offers a simulated camera; Add makes one and opens its settings');
+        const cornered = await js(`(() => { const t = [...document.querySelectorAll('#cameraList .tile')].at(-1), b = t.querySelector('.remove').getBoundingClientRect(), box = t.getBoundingClientRect(); return { right: Math.round(box.right - b.right), top: Math.round(b.top - box.top) }; })()`);
+        const confirmText = await removeTile('Simulated camera');
+        check(!simAdded.removeInside && cornered.right >= 0 && cornered.right < 30 && cornered.top >= 0 && cornered.top < 30 && confirmText === 'Remove?' && (await tileNames()).join() === 'Pool,Finish', `Remove is in the upper right corner of the camera's box (${cornered.right}px from the right, ${cornered.top}px from the top), asks once more, then removes`);
+        // The found list follows: a camera added from it reads Added, and is offered again once removed.
+        const foundButton = `[...document.querySelectorAll('#foundList .found-item:not(.simulated) .found-head')].map(h => ({ name: h.querySelector('strong').textContent, button: h.querySelector('button')?.textContent || '' }))`;
+        const listed = (await js(foundButton)).find(f => f.button === 'Add');
+        if (!listed) console.log('SKIP the found list following a removal: nothing addable was found on this computer or network');
+        else {
+            await js(`[...document.querySelectorAll('#foundList .found-item:not(.simulated) .found-head')].find(h => h.querySelector('strong').textContent === ${JSON.stringify(listed.name)}).querySelector('button').click()`); await wait(2500);
+            const afterAdd = (await js(foundButton)).find(f => f.name === listed.name).button, had = (await tileNames()).includes(listed.name);
+            await removeTile(listed.name); await wait(600);
+            const afterRemove = (await js(foundButton)).find(f => f.name === listed.name).button;
+            check(had && afterAdd === 'Added' && afterRemove === 'Add' && (await tileNames()).join() === 'Pool,Finish', `${listed.name}: Add in the found list reads Added; removed, it is offered again`);
+        }
         const two = await js(`({ label: ${text('camerasLabel')}, tiles: [...document.querySelectorAll('.tile .name')].map(n => n.textContent), status: ${text('camAddStatus')} })`);
         check(two.label === 'Cameras' && two.tiles.join(',') === 'Pool,Finish', `a second camera: tab reads Cameras, tiles ${two.tiles.join(' and ')}`);
         // Steering: a stand-in camera at that address answers the version question, so the tile grows its controls, and they send.
@@ -169,8 +190,8 @@ app.on('browser-window-created', (event, win) => {
         await js(`document.getElementById('cdName').value = 'Finish line'; document.getElementById('cdSimulate').checked = false`); await click('cdSave', 1200);
         const renamed = await js(`({ open: document.getElementById('cameraDialog').open, tiles: [...document.querySelectorAll('.tile .name')].map(n => n.textContent), sims: document.querySelectorAll('.tile .camSim:checked').length, select: [...document.getElementById('programCamera').options].map(o => o.text).join(',') })`);
         check(!renamed.open && renamed.tiles.join(',') === 'Pool,Finish line' && renamed.sims === 1 && renamed.select === 'Pool,Finish line', `saved: renamed to Finish line, back to real; the program camera list follows`);
-        await js(`[...document.querySelectorAll('.tile')].find(t => t.querySelector('.name').textContent === 'Finish line').querySelector('.gear').click()`); await wait(300); await click('cdRemove', 1200);
-        check(await js(`document.querySelectorAll('.tile').length === 1 && ${text('camerasLabel')} === 'Camera'`), 'removed from its dialog; tab reads Camera again');
+        await removeTile('Finish line');
+        check(await js(`document.querySelectorAll('.tile').length === 1 && ${text('camerasLabel')} === 'Camera'`), 'removed from the corner of its box; tab reads Camera again');
         // Search the network: whatever is out there today, the search finishes and says what it found, with any fix written out.
         await js(`document.getElementById('findDevices').click()`);
         let search; for (let i = 0; i < 40; i++) { await wait(300); search = await js(`({ busy: document.getElementById('findDevices').disabled, status: ${text('searchStatus')}, rows: document.querySelectorAll('#foundList .found-item').length, none: document.querySelectorAll('#foundList > p').length, fixes: [...document.querySelectorAll('#foundList .fix code')].map(c => c.textContent) })`); if (!search.busy) break; }

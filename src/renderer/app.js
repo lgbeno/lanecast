@@ -358,10 +358,22 @@
         again.onclick = () => { players.get(camera.id)?.reconnect(); render(); };
         // Steering, for a camera that has said it can be steered (see steerable): the same controls the Stream tab offers.
         const steering = steeringControls(camera.id); steering.element.hidden = true; tileSteering.set(camera.id, steering);
-        caption.append(name, badge, status, sw, again, gear, steering.element); figure.append(video, caption);
+        // Remove, in the corner of the box. It asks once more, in place, since a camera takes its saved positions and stand-in with it.
+        const remove = document.createElement('button'); remove.type = 'button'; remove.className = 'remove'; remove.textContent = '✕'; remove.title = 'Remove this camera';
+        let armed = null;
+        const disarm = () => { clearTimeout(armed); armed = null; remove.textContent = '✕'; remove.classList.remove('sure'); remove.title = 'Remove this camera'; };
+        remove.onclick = async () => {
+            if (armed === null) { remove.textContent = 'Remove?'; remove.classList.add('sure'); remove.title = 'Press again to remove this camera'; armed = setTimeout(disarm, 4000); return; }
+            disarm(); hideError();
+            try { await api.cameras.remove(camera.id); } catch (e) { showError(e); }
+            await refreshCameras();
+        };
+        remove.addEventListener('blur', disarm);
+        caption.append(name, badge, status, sw, remove, again, gear, steering.element); figure.append(video, caption);
         players.set(camera.id, new Player(camera, video));
         return figure;
     };
+    let listedSources = '';                         // the cameras the found list was last drawn against
     async function refreshCameras() {
         try { cameraList = await api.cameras.list(); } catch (e) { cameraList = []; }
         const list = $('cameraList'), have = new Set(cameraList.map(c => c.id));
@@ -372,6 +384,8 @@
             askSteerable(camera);
         }
         for (const id of steerable.keys()) if (!have.has(id)) steerable.delete(id);
+        const sources = cameraList.map(c => c.url + '|' + (c.deviceLabel || '')).join('\n');
+        if (sources !== listedSources) { listedSources = sources; renderFound(); }                    // the found list says Added, or offers Add again
         const select = $('programCamera'), current = programCameraId();
         select.replaceChildren(...cameraList.map(c => new Option(c.name, c.id)));
         if (!cameraList.length) select.append(new Option('No cameras yet', ''));
@@ -387,12 +401,13 @@
     async function addCamera(simulated = false) {
         hideError(); $('camAddButton').disabled = true; $('camAddStatus').textContent = 'Adding…';
         try {
-            const camera = await api.cameras.add(simulated ? { name: $('camName').value || 'Simulated camera', url: '', simulate: true } : { name: $('camName').value, url: $('camUrl').value });
+            const pretend = cameraList.filter(c => /^Simulated camera/.test(c.name)).length;
+            const camera = await api.cameras.add(simulated ? { name: 'Simulated camera' + (pretend ? ' ' + (pretend + 1) : ''), url: '', simulate: true } : { name: $('camName').value, url: $('camUrl').value });
             $('camName').value = ''; $('camUrl').value = ''; $('camAddStatus').textContent = '';
             if ($('manualDialog').open) $('manualDialog').close();
             await refreshCameras(); renderFound();
             if (simulated) openCameraDialog(camera.id);
-        } catch (e) { $('camAddStatus').textContent = e.message.replace(/^Error invoking remote method '[^']+': (Error: )?/, ''); }
+        } catch (e) { if (simulated) showError(e); else $('camAddStatus').textContent = e.message.replace(/^Error invoking remote method '[^']+': (Error: )?/, ''); }
         $('camAddButton').disabled = false;
     }
     // The camera's settings dialog: name, address, the simulate switch, the stand-in, and removal.
@@ -436,7 +451,6 @@
     $('cdCancel').onclick = () => $('cameraDialog').close();
     $('cdChoose').onclick = async () => { hideError(); try { await api.cameras.chooseMedia(dialogCamera); } catch (e) { showError(e); } await refreshCameras(); };
     $('cdClearMedia').onclick = async () => { hideError(); try { await api.cameras.clearMedia(dialogCamera); } catch (e) { showError(e); } await refreshCameras(); };
-    $('cdRemove').onclick = async () => { hideError(); try { await api.cameras.remove(dialogCamera); } catch (e) { showError(e); } $('cameraDialog').close(); await refreshCameras(); };
     $('cameraDialog').addEventListener('close', () => { dialogCamera = null; });
     // ---- finding cameras: this computer's own and the network's, in one list -----------------
     /** Cameras attached to this computer. Their names only show once camera access has been given, so a search asks once. */
@@ -496,9 +510,15 @@
             if (found.blocked.settings && api.cameras.openNetworkPrivacy) { const line = el('div', 'fix'), open = el('button', '', 'Open that setting'); open.type = 'button'; open.onclick = () => api.cameras.openNetworkPrivacy().catch(showError); line.append(open); box.append(line); }
             rows.push(box);
         }
+        const real = rows.length;
         if (searchError) rows.push(el('p', 'small', searchError));
         if (deviceProblem && !devices.some(device => device.deviceId)) rows.push(el('p', 'small', deviceProblem));     // only while none of them can be listed
-        if (!rows.length) rows.push(el('p', 'small', searching ? 'Looking on this computer and on the network…' : found ? 'No camera found. Check that it is switched on and plugged in, then Find cameras again; or add it by hand.' : 'Find cameras looks on this computer and on the network.'));
+        if (!real) rows.push(el('p', 'small', searching ? 'Looking on this computer and on the network…' : found ? 'No camera found. Check that it is switched on and plugged in, then Find cameras again; or add it by hand.' : 'Find cameras looks on this computer and on the network.'));
+        // Always on offer: a stand-in for a camera that is not here yet, to build the stream against a photo or video of its view.
+        const sim = item('Simulated camera', 'A stand-in photo or video');
+        sim.box.classList.add('simulated');
+        adder(sim.head, false, 'Add', async () => { await addCamera(true); renderFound(); });
+        rows.push(sim.box);
         $('foundList').replaceChildren(...rows);
         const count = devices.filter(device => device.deviceId).length + (found ? found.cameras.length : 0);
         $('searchStatus').textContent = searching ? 'Looking…' : found ? (count ? `${count} found` : 'None found') : '';
@@ -943,7 +963,6 @@
     $('manualAdd').onclick = () => openManual();
     $('manualClose').onclick = () => $('manualDialog').close();
     $('camAddButton').onclick = () => addCamera(false);
-    $('camAddSim').onclick = () => addCamera(true);
     // Enter adds, rather than closing the dialog as a form would.
     $('camUrl').addEventListener('keydown', e => { e.stopPropagation(); if (e.key === 'Enter') { e.preventDefault(); addCamera(false); } });
     $('camName').addEventListener('keydown', e => { e.stopPropagation(); if (e.key === 'Enter') { e.preventDefault(); $('camUrl').focus(); } });

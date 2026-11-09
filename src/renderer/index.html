@@ -85,7 +85,7 @@
 <article id="camAdd" class="camera-find">
 <div class="actions"><button id="findDevices" class="primary" type="button">Find cameras</button><span id="searchStatus" class="small"></span></div>
 <div id="foundList" class="found"></div>
-<div class="actions manual"><button id="manualAdd" type="button" class="quiet" title="For a camera the search does not find: its address, or a stand-in for one that is not here yet">Add manually…</button></div>
+<div class="actions manual"><button id="manualAdd" type="button" class="quiet" title="For a camera the search does not find: add it by its address">Add manually…</button></div>
 </article>
 <article class="camera-have">
 <div id="cameraList" class="camera-rows"></div>
@@ -99,9 +99,6 @@
 <div class="field"><label for="camUrl">Address</label><input id="camUrl" placeholder="rtsp://192.168.1.50/1" spellcheck="false"></div>
 <p class="small">Most PTZ cameras serve their main stream at <code>rtsp://&lt;camera ip&gt;/1</code>. If the camera asks for a login, write <code>rtsp://user:password@ip/1</code>. Set the camera to H.264.</p>
 <div class="actions"><button id="camAddButton" type="button" class="primary">Add</button><span id="camAddStatus" class="small"></span></div>
-<h3 class="later">Not here yet</h3>
-<p class="small">A camera you will set up later: add it simulated, with a photo or video from where it will stand.</p>
-<div class="actions"><button id="camAddSim" type="button">Add a simulated camera</button></div>
 <div class="actions cd-foot"><span></span><button id="manualClose" type="button">Close</button></div>
 </form></dialog>
 <dialog id="cameraDialog"><form method="dialog"><h3 id="cameraDialogTitle">Camera</h3>
@@ -113,7 +110,7 @@
 <h3>Stand-in</h3>
 <p class="small">A photo or video taken from where this camera stands, shown while it is simulated.</p>
 <div class="actions"><button id="cdChoose" type="button">Choose photo or video…</button><button id="cdClearMedia" type="button">Remove</button><span id="cdMedia" class="small"></span></div>
-<div class="actions cd-foot"><button id="cdRemove" type="button" class="quiet">Remove this camera</button><span><button id="cdCancel" type="button">Cancel</button> <button id="cdSave" type="button" class="primary">Save</button></span></div>
+<div class="actions cd-foot"><span></span><span><button id="cdCancel" type="button">Cancel</button> <button id="cdSave" type="button" class="primary">Save</button></span></div>
 </form></dialog>
 </section>
 
