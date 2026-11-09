@@ -15,6 +15,8 @@ const { Themes } = require('./themes');
 const { Projects, EXT: PROJECT_EXT } = require('./project');
 
 const { CameraEngine, IMAGES, VIDEOS } = require('./cameras');
+const { Ptz } = require('./ptz');
+const ptz = new Ptz();
 const PARTS = ['timer', 'events'];
 let win = null, serial = null, relay = null, store = null, cameras = null, themes = null, projects = null;
 // The timer and the meet data can be simulated on their own; cameras each carry their own switch.
@@ -160,7 +162,7 @@ ipcMain.handle('project:save', () => projectSave());
 ipcMain.handle('project:saveAs', () => projectSaveAs());
 ipcMain.handle('project:saveTo', (event, file) => projectSaveTo(String(file)));
 ipcMain.handle('project:rename', (event, name) => projectRename(String(name ?? '')));
-app.on('before-quit', () => { if (serial) serial.closeAll(); if (relay) relay.stop(); if (cameras) cameras.stop(); if (store) store.flush(); });
+app.on('before-quit', () => { ptz.close(); if (serial) serial.closeAll(); if (relay) relay.stop(); if (cameras) cameras.stop(); if (store) store.flush(); });
 // However the process ends, go2rtc must not outlive it.
 process.on('exit', () => { if (cameras) cameras.stop(); });
 
@@ -191,6 +193,19 @@ ipcMain.handle('cameras:access', async () => {
 ipcMain.handle('cameras:list', () => cameras.list());
 // Cameras that announce themselves on any adapter, each with whether it can be reached and, if not, what to set.
 ipcMain.handle('cameras:discover', () => require('./discover').discover());
+// Steering. A network camera that answers VISCA can be panned, tilted and zoomed from its tile. The window names a camera
+// it has, never an address: where to send is taken from that camera's own record.
+const hostOf = id => {
+    const camera = cameras && cameras.cameras.find(c => c.id === String(id));
+    if (!camera || !camera.url || camera.url.startsWith('device:')) return null;
+    try { return new URL(camera.url).hostname || null; } catch (e) { return null; }
+};
+ipcMain.handle('ptz:probe', async (event, id, again) => { const host = hostOf(id); if (!host) return null; if (again) ptz.forget(); return ptz.probe(host); });
+ipcMain.handle('ptz:move', (event, id, pan, tilt) => { const host = hostOf(id); return host ? ptz.move(host, Number(pan), Number(tilt)) : false; });
+ipcMain.handle('ptz:zoom', (event, id, zoom) => { const host = hostOf(id); return host ? ptz.zoom(host, Number(zoom)) : false; });
+ipcMain.handle('ptz:stop', (event, id) => { const host = hostOf(id); return host ? ptz.stop(host) : false; });
+ipcMain.handle('ptz:home', (event, id) => { const host = hostOf(id); return host ? ptz.home(host) : false; });
+ipcMain.handle('ptz:preset', (event, id, number, save) => { const host = hostOf(id); return host ? ptz.preset(host, Number(number), !!save) : false; });
 // When macOS shut the search out: open the one settings pane where the person allows it. A fixed address, nothing the window chooses.
 ipcMain.handle('cameras:openNetworkPrivacy', () => process.platform === 'darwin' ? shell.openExternal('x-apple.systempreferences:com.apple.preference.security?Privacy_LocalNetwork').then(() => true) : false);
 ipcMain.handle('cameras:add', (event, camera) => cameras.add(camera || {}));

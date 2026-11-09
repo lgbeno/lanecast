@@ -43,6 +43,14 @@ contextBridge.exposeInMainWorld('lanecast', {
         mediaBytes: id => invoke('cameras:mediaBytes', id),
         onStatus: callback => on('cameras:status', callback)
     },
+    ptz: {
+        probe: (id, again) => invoke('ptz:probe', id, again),
+        move: (id, pan, tilt) => invoke('ptz:move', id, pan, tilt),
+        zoom: (id, zoom) => invoke('ptz:zoom', id, zoom),
+        stop: id => invoke('ptz:stop', id),
+        home: id => invoke('ptz:home', id),
+        preset: (id, number, save) => invoke('ptz:preset', id, number, save)
+    },
     project: {
         info: () => invoke('project:info'),
         new: () => invoke('project:new'),

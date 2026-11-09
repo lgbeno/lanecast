@@ -237,7 +237,8 @@ function diagnose(address, list, via = [], platform = process.platform) {
 /** The diagnosis in a sentence or two, for the person at the pool. */
 function explain(camera, list) {
     const d = camera.diagnosis;
-    if (d.reach === 'same-network') return camera.rtsp ? (camera.rtsp.needsLogin ? `Reachable on ${d.adapter.label}; it asks for a user name and password.` : `Reachable on ${d.adapter.label}.`)
+    const steer = camera.ptz ? ' It can be steered from here: pan, tilt and zoom appear on its tile.' : '';
+    if (d.reach === 'same-network') return camera.rtsp ? (camera.rtsp.needsLogin ? `Reachable on ${d.adapter.label}; it asks for a user name and password.` : `Reachable on ${d.adapter.label}.`) + steer
         : `On the same network as ${d.adapter.label}, but no video address answered. RTSP may be switched off in the camera, or on an unusual port.`;
     const nets = list.map(a => `${a.label} is ${a.address}${a.selfAssigned ? ' (self-assigned: plugged in, but nothing gives it an address)' : ''}`).join('; ');
     const net = camera.address.split('.').slice(0, 3).join('.');
@@ -300,6 +301,7 @@ async function discover({ ms = 2600 } = {}) {
         if (!camera.address) { camera.diagnosis = { reach: 'no-address', adapter: null }; camera.rtsp = null; camera.explanation = 'It announced itself but gave no address. Search again in a moment.'; return; }
         camera.diagnosis = diagnose(camera.address, list, camera.via);
         camera.rtsp = camera.diagnosis.reach === 'same-network' ? await findRtsp(camera.address, camera.rtspPort || 554) : null;
+        camera.ptz = camera.diagnosis.reach === 'same-network' ? !!(await require('./ptz').detect(camera.address)) : false;      // asks its version; moves nothing
         camera.explanation = explain(camera, list);
     }));
     cameras.sort((a, b) => a.name.localeCompare(b.name));

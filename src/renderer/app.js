@@ -277,6 +277,17 @@
             return this.frames > 0 && now - this.frameAt < 2000 && this.video.videoWidth > 0 && (!this.camera.simulate || !!this.standIn?.hasPicture);
         }
     }
+    // Which network cameras can be steered: each is asked once (a question that moves nothing), and asked again now and
+    // then while the answer is no, since a camera may simply not have been switched on yet.
+    const steerable = new Map();                    // camera id -> { url, info, at }
+    function askSteerable(camera, again = false) {
+        if (!api.ptz || !camera.url || camera.local) { steerable.delete(camera.id); return; }
+        const had = steerable.get(camera.id);
+        if (!again && had && had.url === camera.url && (had.info || had.asking || Date.now() - had.at < 30000)) return;
+        const entry = { url: camera.url, info: had && had.url === camera.url ? had.info : null, at: Date.now(), asking: true };
+        steerable.set(camera.id, entry);
+        api.ptz.probe(camera.id, again).then(info => { entry.info = info || null; }, () => { entry.info = null; }).then(() => { entry.asking = false; entry.at = Date.now(); render(); });
+    }
     const tileFor = camera => {
         const figure = document.createElement('figure'); figure.className = 'tile'; figure.dataset.id = camera.id;
         const video = document.createElement('video'); video.autoplay = true; video.muted = true; video.playsInline = true;
@@ -290,7 +301,29 @@
         gear.onclick = () => openCameraDialog(camera.id);
         const again = document.createElement('button'); again.type = 'button'; again.className = 'reconnect'; again.textContent = 'Reconnect'; again.title = 'Open this camera again'; again.hidden = true;
         again.onclick = () => { players.get(camera.id)?.reconnect(); render(); };
-        caption.append(name, badge, status, sw, again, gear); figure.append(video, caption);
+        // Steering, for a camera that has said it can be steered (see steerable): pan and tilt, zoom, home, four presets.
+        const ptz = document.createElement('div'); ptz.className = 'ptz'; ptz.hidden = true;
+        const key = (text, title, className) => { const b = document.createElement('button'); b.type = 'button'; b.textContent = text; b.title = title; if (className) b.className = className; return b; };
+        const speed = document.createElement('input'); speed.type = 'range'; speed.min = '1'; speed.max = '10'; speed.value = '4'; speed.title = 'Speed'; speed.className = 'ptzSpeed';
+        const rate = () => Number(speed.value) / 10;
+        // A held button drives. The camera keeps going until told to stop, so the drive is renewed while the button is held
+        // (the main process stops the camera if the renewals cease) and letting go stops it at once.
+        const held = (button, drive) => {
+            let timer = null;
+            const end = () => { if (timer === null) return; clearInterval(timer); timer = null; api.ptz.stop(camera.id).catch(() => {}); };
+            button.addEventListener('pointerdown', e => { e.preventDefault(); try { button.setPointerCapture(e.pointerId); } catch (x) { /* a synthetic pointer */ } const go = () => drive().catch(() => {}); clearInterval(timer); go(); timer = setInterval(go, 300); });
+            for (const type of ['pointerup', 'pointercancel', 'lostpointercapture']) button.addEventListener(type, end);
+            window.addEventListener('blur', end);
+            return button;
+        };
+        const drive = (text, title, pan, tilt) => held(key(text, title), () => api.ptz.move(camera.id, pan * rate(), tilt * rate()));
+        const zoomKey = (text, title, zoom) => held(key(text, title), () => api.ptz.zoom(camera.id, zoom * rate()));
+        const home = key('Home', 'Back to the camera’s home position', 'wide'); home.onclick = () => api.ptz.home(camera.id).catch(showError);
+        const set = key('Set', 'Then press a number to store where the camera points now', 'wide ptzSet'); set.onclick = () => set.classList.toggle('on');
+        const presets = [1, 2, 3, 4].map(n => { const b = key(String(n), `Go to preset ${n} (after Set: store it)`, 'ptzPreset'); b.onclick = () => { const save = set.classList.contains('on'); set.classList.remove('on'); api.ptz.preset(camera.id, n, save).catch(showError); }; return b; });
+        const gap = () => document.createElement('i');
+        ptz.append(drive('◀', 'Pan left', -1, 0), drive('▲', 'Tilt up', 0, 1), drive('▼', 'Tilt down', 0, -1), drive('▶', 'Pan right', 1, 0), gap(), zoomKey('−', 'Zoom out', -1), zoomKey('+', 'Zoom in', 1), gap(), home, gap(), ...presets, set, speed);
+        caption.append(name, badge, status, sw, again, gear, ptz); figure.append(video, caption);
         players.set(camera.id, new Player(camera, video));
         return figure;
     };
@@ -301,7 +334,9 @@
         for (const camera of cameraList) {
             if (players.has(camera.id)) players.get(camera.id).update(camera);
             else list.append(tileFor(camera));
+            askSteerable(camera);
         }
+        for (const id of steerable.keys()) if (!have.has(id)) steerable.delete(id);
         const select = $('programCamera'), current = programCameraId();
         select.replaceChildren(...cameraList.map(c => new Option(c.name, c.id)));
         if (!cameraList.length) select.append(new Option('No cameras yet', ''));
@@ -397,6 +432,7 @@
     async function findCameras() {
         const button = $('findDevices'), status = $('searchStatus');
         button.disabled = true; status.textContent = 'Looking on this computer and listening on every adapter…';
+        for (const camera of cameraList) askSteerable(camera, true);               // and ask each network camera again whether it can be steered
         const [, onNetwork] = await Promise.all([refreshDevices(true).catch(() => {}), searchNetwork()]);
         button.disabled = false;
         status.textContent = `${devices.length} on this computer · ${onNetwork} on the network`;
@@ -412,7 +448,7 @@
         const searched = result.adapters.map(a => `${a.label} (${a.address})`).join(', ');
         const rows = result.cameras.map(camera => {
             const item = el('div', 'found-item'), head = el('div', 'found-head');
-            head.append(el('strong', '', camera.name), el('span', 'small', [camera.address || camera.host, camera.kinds.join(' + ')].filter(Boolean).join(' · ')));
+            head.append(el('strong', '', camera.name), el('span', 'small', [camera.address || camera.host, camera.kinds.join(' + '), camera.ptz ? 'PTZ' : ''].filter(Boolean).join(' · ')));
             if (camera.rtsp) {
                 const have = cameraList.some(c => c.url === camera.rtsp.url), add = el('button', '', have ? 'Added' : camera.rtsp.needsLogin ? 'Fill in' : 'Add');
                 add.type = 'button'; add.disabled = have;
@@ -464,6 +500,7 @@
             figure.querySelector('.name').textContent = c.name;
             figure.querySelector('.sim-badge').hidden = !c.simulate;
             const box = figure.querySelector('.camSim'); if (box.checked !== c.simulate) box.checked = c.simulate; box.disabled = !c.url;
+            figure.querySelector('.ptz').hidden = c.simulate || !steerable.get(c.id)?.info;
             // One button for a camera on this computer: Disconnect while it is open, Stop while looking, else Reconnect.
             const again = figure.querySelector('.reconnect'), looking = player.looking, open = player.state === 'open';
             again.hidden = !player.isDevice; again.disabled = player.state === 'connecting' && !looking;
