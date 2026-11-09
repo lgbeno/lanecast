@@ -85,12 +85,19 @@ app.on('browser-window-created', (event, win) => {
         const cams = await js(`({ tiles: document.querySelectorAll('.tile').length, status: [...document.querySelectorAll('.tile .small')].map(s => s.textContent), engine: ${text('engineStatus')}, ready: ${dots},
             program: document.getElementById('programVideo').videoWidth, note: document.getElementById('stageNote').hidden, bug: document.getElementById('overlayFrame').src.startsWith('theme://b-classic/overlay.html'), pstatus: ${text('programStatus')}, theme: ${text('themeStatus')}, name: document.querySelector('.tile .name').textContent, badge: !document.querySelector('.tile .sim-badge').hidden })`);
         check(cams.tiles === 1 && cams.name === 'Pool' && cams.badge && /^Stand-in · 1280×720/.test(cams.status[0]), `the camera Pool shows its stand-in photo, live, with a Sim badge: ${cams.status.join(' / ')}`);
-        // This computer's cameras are listed without asking for access first; the list may be empty on a build machine.
-        await js(`document.getElementById('tab-cameras').click()`); await wait(800);
-        const local = await js(`({ list: document.getElementById('deviceList').textContent, rows: document.querySelectorAll('.device').length, note: ${text('deviceNote')}, find: !!document.getElementById('findDevices') })`);
-        check(local.find && (local.rows > 0 || /Find cameras|No cameras/.test(local.list)), `local cameras listed or none found: ${local.rows} row(s) · ${local.list.slice(0, 60)}`);
-        // A second camera, by address; the tab turns plural; its own switch makes it a stand-in; its settings dialog renames it.
+        // The Camera tab looks for cameras by itself the first time it is opened: this computer's and the network's, in one list.
+        await js(`document.getElementById('tab-cameras').click()`); await wait(300);
+        const looking = await js(`({ busy: document.getElementById('findDevices').disabled, status: ${text('searchStatus')} })`);
+        let auto; for (let i = 0; i < 50; i++) { await wait(300); auto = await js(`({ busy: document.getElementById('findDevices').disabled, status: ${text('searchStatus')}, items: document.querySelectorAll('#foundList .found-item').length, manual: !!document.getElementById('manualAdd'), dialog: document.getElementById('manualDialog').open, columns: [document.getElementById('camAdd').getBoundingClientRect().x, document.querySelector('.camera-have').getBoundingClientRect().x] })`); if (!auto.busy) break; }
+        check(looking.busy && looking.status === 'Looking…' && !auto.busy && /^\d+ found$|^None found$/.test(auto.status), `opening the Camera tab searches by itself and finishes: ${auto.status}, ${auto.items} listed`);
+        check(auto.manual && !auto.dialog && auto.columns[0] < auto.columns[1], 'finding is on the left, the cameras on the right; adding by hand waits behind Add manually…');
+        // A second camera, by hand: Add manually… opens the dialog, Add closes it; the tab turns plural.
+        await js(`document.getElementById('manualAdd').click()`); await wait(300);
+        const manual = await js(`({ open: document.getElementById('manualDialog').open, sim: !!document.getElementById('manualDialog').querySelector('#camAddSim') })`);
         await js(`document.getElementById('camName').value = 'Finish'; document.getElementById('camUrl').value = 'rtsp://127.0.0.1:1/none'`); await click('camAddButton', 1500);
+        check(manual.open && manual.sim && !(await js(`document.getElementById('manualDialog').open`)), 'Add manually… holds the address fields and the simulated camera; adding closes it');
+        const stacked = await js(`[...document.querySelectorAll('#cameraList .tile')].map(t => { const r = t.getBoundingClientRect(); return [Math.round(r.x), Math.round(r.y)]; })`);
+        check(stacked.length === 2 && stacked[0][0] === stacked[1][0] && stacked[1][1] > stacked[0][1], `the cameras are stacked one under another, not side by side: ${JSON.stringify(stacked)}`);
         const two = await js(`({ label: ${text('camerasLabel')}, tiles: [...document.querySelectorAll('.tile .name')].map(n => n.textContent), status: ${text('camAddStatus')} })`);
         check(two.label === 'Cameras' && two.tiles.join(',') === 'Pool,Finish', `a second camera: tab reads Cameras, tiles ${two.tiles.join(' and ')}`);
         // Steering: a stand-in camera at that address answers the version question, so the tile grows its controls, and they send.
@@ -167,7 +174,7 @@ app.on('browser-window-created', (event, win) => {
         // Search the network: whatever is out there today, the search finishes and says what it found, with any fix written out.
         await js(`document.getElementById('findDevices').click()`);
         let search; for (let i = 0; i < 40; i++) { await wait(300); search = await js(`({ busy: document.getElementById('findDevices').disabled, status: ${text('searchStatus')}, rows: document.querySelectorAll('#foundList .found-item').length, none: document.querySelectorAll('#foundList > p').length, fixes: [...document.querySelectorAll('#foundList .fix code')].map(c => c.textContent) })`); if (!search.busy) break; }
-        check(!search.busy && /^\d+ on this computer · \d+ on the network$/.test(search.status) && (search.rows > 0 || search.none === 1) && search.fixes.every(f => /\d+\.\d+\.\d+\.\d+/.test(f)), `Find cameras looks in both places and finishes: ${search.status}${search.fixes.length ? ' · fix: ' + search.fixes.join(' | ') : ''}`);
+        check(!search.busy && /^\d+ found$|^None found$/.test(search.status) && (search.rows > 0 || search.none >= 1) && search.fixes.every(f => /\d+\.\d+\.\d+\.\d+/.test(f)), `Find cameras looks in both places and finishes: ${search.status}${search.fixes.length ? ' · fix: ' + search.fixes.join(' | ') : ''}`);
         // A camera on this computer, when there is one: open, Disconnect from the tile, Reconnect, open again.
         const device = await js(`navigator.mediaDevices.enumerateDevices().then(ds => ds.find(d => d.kind === 'videoinput' && d.deviceId) || null).then(d => d && { id: d.deviceId, label: d.label })`);
         const cameraAccess = device ? await js(`window.lanecast.cameras.access()`) : 'none';

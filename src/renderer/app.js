@@ -379,12 +379,18 @@
         if ($('cameraDialog').open && dialogCamera) fillCameraDialog(cameraList.find(c => c.id === dialogCamera) || null);
         render();
     }
+    /** Add manually: the fallback for a camera the search does not find, or one that wants a login. Its fields live in a dialog. */
+    function openManual(name = '', url = '') {
+        hideError(); $('camName').value = name; $('camUrl').value = url; $('camAddStatus').textContent = '';
+        $('manualDialog').showModal(); (url ? $('camUrl') : $('camName')).focus();
+    }
     async function addCamera(simulated = false) {
         hideError(); $('camAddButton').disabled = true; $('camAddStatus').textContent = 'Adding…';
         try {
             const camera = await api.cameras.add(simulated ? { name: $('camName').value || 'Simulated camera', url: '', simulate: true } : { name: $('camName').value, url: $('camUrl').value });
-            $('camName').value = ''; $('camUrl').value = ''; $('camAddStatus').textContent = `Added ${camera.name}.`;
-            await refreshCameras();
+            $('camName').value = ''; $('camUrl').value = ''; $('camAddStatus').textContent = '';
+            if ($('manualDialog').open) $('manualDialog').close();
+            await refreshCameras(); renderFound();
             if (simulated) openCameraDialog(camera.id);
         } catch (e) { $('camAddStatus').textContent = e.message.replace(/^Error invoking remote method '[^']+': (Error: )?/, ''); }
         $('camAddButton').disabled = false;
@@ -432,96 +438,83 @@
     $('cdClearMedia').onclick = async () => { hideError(); try { await api.cameras.clearMedia(dialogCamera); } catch (e) { showError(e); } await refreshCameras(); };
     $('cdRemove').onclick = async () => { hideError(); try { await api.cameras.remove(dialogCamera); } catch (e) { showError(e); } $('cameraDialog').close(); await refreshCameras(); };
     $('cameraDialog').addEventListener('close', () => { dialogCamera = null; });
-    /** Cameras attached to this computer. Labels only show once the camera has been allowed, so Find cameras asks once. */
-    let devices = [], devicesAsked = false;
+    // ---- finding cameras: this computer's own and the network's, in one list -----------------
+    /** Cameras attached to this computer. Their names only show once camera access has been given, so a search asks once. */
+    let devices = [], devicesAsked = false, deviceProblem = '';
+    let found = null, searching = false, searchError = '';       // the last network search's answer; one in progress; why it failed
     async function refreshDevices(ask = false) {
-        if (!navigator.mediaDevices?.enumerateDevices) { $('deviceNote').textContent = 'Not available here.'; return; }
+        if (!navigator.mediaDevices?.enumerateDevices) { devices = []; renderFound(); return; }
         try {
             if (ask && !devicesAsked) {
-                devicesAsked = true;
+                devicesAsked = true; deviceProblem = '';
                 try {
                     const access = api.cameras.access ? await api.cameras.access() : 'granted';
                     if (access !== 'granted') throw Object.assign(new Error('refused'), { name: 'NotAllowedError' });
                     const s = await navigator.mediaDevices.getUserMedia({ video: true, audio: false }); s.getTracks().forEach(t => t.stop());
                 }
-                catch (e) { $('deviceNote').textContent = e.name === 'NotAllowedError' ? 'Camera access was refused. Allow it in System Settings → Privacy → Camera.' : e.name === 'NotFoundError' ? 'No camera found on this computer.' : e.message; }
+                catch (e) { deviceProblem = e.name === 'NotAllowedError' ? 'This computer’s own cameras are hidden: camera access was refused. Allow Lanecast in System Settings → Privacy & Security → Camera.' : e.name === 'NotFoundError' ? '' : e.message; }
             }
             devices = (await navigator.mediaDevices.enumerateDevices()).filter(d => d.kind === 'videoinput');
-        } catch (e) { devices = []; $('deviceNote').textContent = e.message; }
-        const added = new Set(cameraList.map(c => c.url));
-        $('deviceList').replaceChildren(...devices.map((d, i) => {
-            const row = document.createElement('div'); row.className = 'device';
-            const label = document.createElement('span'); label.textContent = d.label || `Camera ${i + 1}`;
-            const add = document.createElement('button'); add.type = 'button';
-            const url = 'device:' + d.deviceId, have = added.has(url) || (!!d.label && cameraList.some(c => c.deviceLabel === d.label));
-            add.textContent = have ? 'Added' : 'Add'; add.disabled = have || !d.deviceId;
-            add.onclick = async () => { add.disabled = true; try { await api.cameras.add({ name: d.label || `Camera ${i + 1}`, url, deviceLabel: d.label }); await refreshCameras(); await refreshDevices(); } catch (e) { showError(e); add.disabled = false; } };
-            row.append(label, add); return row;
-        }));
-        if (!devices.length) { const none = document.createElement('p'); none.className = 'small'; none.textContent = devicesAsked ? 'No cameras found on this computer.' : 'Press Find cameras to look.'; $('deviceList').replaceChildren(none); }
-        else if (!devices.some(d => d.label)) $('deviceNote').textContent = 'Press Find cameras to see their names.';
-        else if (!$('deviceNote').textContent.startsWith('Camera access')) $('deviceNote').textContent = devices.some(d => /iphone|ipad/i.test(d.label)) ? ''
-            : 'This is the list macOS offers right now (Photo Booth shows the same one). An iPhone appears while it is nearby with Bluetooth and Wi‑Fi on and Continuity Camera enabled.';
+        } catch (e) { devices = []; deviceProblem = e.message; }
+        renderFound();
     }
-    /** Find cameras: one press looks on this computer and listens on the network, together. */
-    async function findCameras() {
-        const button = $('findDevices'), status = $('searchStatus');
-        button.disabled = true; status.textContent = 'Looking on this computer and listening on every adapter…';
-        for (const camera of cameraList) askSteerable(camera, true);               // and ask each network camera again whether it can be steered
-        const [, onNetwork] = await Promise.all([refreshDevices(true).catch(() => {}), searchNetwork()]);
-        button.disabled = false;
-        status.textContent = `${devices.length} on this computer · ${onNetwork} on the network`;
-    }
-    $('findDevices').onclick = findCameras;
-    /** Cameras that announce themselves on the network, each with whether this computer can reach it and, if not, what to set. Returns how many. */
-    async function searchNetwork() {
-        const list = $('foundList');
+    /** Everything found, as one list: each camera with Add, or with what stands in the way of adding it. */
+    function renderFound() {
         const el = (tag, className, text) => { const node = document.createElement(tag); if (className) node.className = className; if (text !== undefined) node.textContent = text; return node; };
-        let result;
-        try { result = await api.cameras.discover(); }
-        catch (e) { list.replaceChildren(el('p', 'small', e.message.replace(/^Error invoking remote method '[^']+': (Error: )?/, ''))); return 0; }
-        const searched = result.adapters.map(a => `${a.label} (${a.address})`).join(', ');
-        const rows = result.cameras.map(camera => {
-            const item = el('div', 'found-item'), head = el('div', 'found-head');
-            head.append(el('strong', '', camera.name), el('span', 'small', [camera.address || camera.host, camera.kinds.join(' + '), camera.ptz ? 'PTZ' : ''].filter(Boolean).join(' · ')));
-            if (camera.rtsp) {
-                const have = cameraList.some(c => c.url === camera.rtsp.url), add = el('button', '', have ? 'Added' : camera.rtsp.needsLogin ? 'Fill in' : 'Add');
-                add.type = 'button'; add.disabled = have;
-                add.onclick = async () => {
-                    // One that asks for a login goes into the form, to have user:password@ put in front; the others are added as they are.
-                    if (camera.rtsp.needsLogin) { $('camName').value = camera.name; $('camUrl').value = camera.rtsp.url.replace('rtsp://', 'rtsp://user:password@'); $('camUrl').focus(); return; }
-                    add.disabled = true;
-                    try { await api.cameras.add({ name: camera.name, url: camera.rtsp.url }); add.textContent = 'Added'; await refreshCameras(); } catch (e) { showError(e); add.disabled = false; }
-                };
-                head.append(add);
-            }
-            item.append(head, el('p', 'small', camera.explanation));
+        const item = (name, detail) => { const box = el('div', 'found-item'), head = el('div', 'found-head'); head.append(el('strong', '', name), el('span', 'small', detail)); box.append(head); return { box, head }; };
+        const adder = (head, have, label, add) => { const button = el('button', '', have ? 'Added' : label); button.type = 'button'; button.disabled = have; button.onclick = async () => { button.disabled = true; try { await add(); } catch (e) { showError(e); button.disabled = false; } }; head.append(button); };
+        const rows = [];
+        // On this computer: webcams, capture cards, an iPhone as a camera.
+        devices.forEach((device, i) => {
+            if (!device.deviceId) return;                                        // its id is hidden until camera access is given
+            const name = device.label || `Camera ${i + 1}`, url = 'device:' + device.deviceId;
+            const have = cameraList.some(c => c.url === url || (!!device.label && c.deviceLabel === device.label));
+            const { box, head } = item(name, 'On this computer');
+            adder(head, have, 'Add', async () => { await api.cameras.add({ name, url, deviceLabel: device.label }); await refreshCameras(); renderFound(); });
+            rows.push(box);
+        });
+        // On the network: each with whether it can be reached and, if not, what to set.
+        for (const camera of found ? found.cameras : []) {
+            const { box, head } = item(camera.name, [camera.address || camera.host, camera.kinds.join(' + '), camera.ptz ? 'PTZ' : ''].filter(Boolean).join(' · '));
+            if (camera.rtsp && camera.rtsp.needsLogin) adder(head, false, 'Add…', async () => openManual(camera.name, camera.rtsp.url.replace('rtsp://', 'rtsp://user:password@')));    // it wants a login: finish the address by hand
+            else if (camera.rtsp) adder(head, cameraList.some(c => c.url === camera.rtsp.url), 'Add', async () => { await api.cameras.add({ name: camera.name, url: camera.rtsp.url }); await refreshCameras(); renderFound(); });
+            if (!camera.rtsp || camera.rtsp.needsLogin) box.append(el('p', 'small', camera.explanation));
             const fix = camera.diagnosis.fix;
             if (fix && fix.command) {
                 const line = el('div', 'fix'), copy = el('button', '', 'Copy');
                 copy.type = 'button'; copy.title = 'Copy this command; run it in a terminal';
                 copy.onclick = async () => { try { await navigator.clipboard.writeText(fix.command); copy.textContent = 'Copied'; } catch (e) { copy.textContent = 'Select it'; } setTimeout(() => { copy.textContent = 'Copy'; }, 1500); };
                 line.append(el('code', '', fix.command), copy);
-                item.append(line, el('p', 'small', `Or by hand: ${fix.where}, IP address ${fix.address}, subnet mask ${fix.netmask}.`));
+                box.append(line, el('p', 'small', `Or by hand: ${fix.where}, IP address ${fix.address}, subnet mask ${fix.netmask}.`));
             }
-            return item;
-        });
-        if (!rows.length && result.blocked) {
-            // Not silence but a shut door: the system let nothing through. Say so, and take the person to the switch.
-            const item = el('div', 'found-item'), head = el('div', 'found-head');
-            head.append(el('strong', '', 'The search was shut out'));
-            item.append(head, el('p', 'small', `${result.blocked.what} Allow it in ${result.blocked.where}, then search again.`));
-            if (result.blocked.settings && api.cameras.openNetworkPrivacy) {
-                const line = el('div', 'fix'), open = el('button', '', 'Open that setting');
-                open.type = 'button'; open.onclick = () => api.cameras.openNetworkPrivacy().catch(showError);
-                line.append(open); item.append(line);
-            }
-            rows.push(item);
+            rows.push(box);
         }
-        if (!rows.length) rows.push(el('p', 'small', `No camera announced itself${searched ? ` on ${searched}` : ''}. Cameras are found by their NDI, RTSP or ONVIF announcement; one with those switched off, or on a network that blocks them, can still be added by its address below.${result.notes.length ? ' ' + result.notes.join('; ') + '.' : ''}`));
-        list.replaceChildren(...rows);
-        return result.cameras.length;
+        if (found && found.blocked && !found.cameras.length) {
+            // Not silence but a shut door: the system let nothing through. Say so, and take the person to the switch.
+            const { box } = item('The network search was shut out', '');
+            box.append(el('p', 'small', `${found.blocked.what} Allow it in ${found.blocked.where}, then Find cameras again.`));
+            if (found.blocked.settings && api.cameras.openNetworkPrivacy) { const line = el('div', 'fix'), open = el('button', '', 'Open that setting'); open.type = 'button'; open.onclick = () => api.cameras.openNetworkPrivacy().catch(showError); line.append(open); box.append(line); }
+            rows.push(box);
+        }
+        if (searchError) rows.push(el('p', 'small', searchError));
+        if (deviceProblem && !devices.some(device => device.deviceId)) rows.push(el('p', 'small', deviceProblem));     // only while none of them can be listed
+        if (!rows.length) rows.push(el('p', 'small', searching ? 'Looking on this computer and on the network…' : found ? 'No camera found. Check that it is switched on and plugged in, then Find cameras again; or add it by hand.' : 'Find cameras looks on this computer and on the network.'));
+        $('foundList').replaceChildren(...rows);
+        const count = devices.filter(device => device.deviceId).length + (found ? found.cameras.length : 0);
+        $('searchStatus').textContent = searching ? 'Looking…' : found ? (count ? `${count} found` : 'None found') : '';
+        $('findDevices').disabled = searching;
     }
+    /** Find cameras: one press looks on this computer and listens on the network, together. Also run when the tab is first opened. */
+    let finding = null;
+    function findCameras() {
+        if (finding) return finding;
+        searching = true; searchError = ''; renderFound();
+        for (const camera of cameraList) askSteerable(camera, true);               // and ask each network camera again whether it can be steered
+        const network = api.cameras.discover().then(result => { found = result; }, e => { found = found || { cameras: [], adapters: [], notes: [], blocked: null }; searchError = e.message.replace(/^Error invoking remote method '[^']+': (Error: )?/, ''); });
+        finding = Promise.all([refreshDevices(true).catch(() => {}), network]).then(() => { searching = false; finding = null; renderFound(); });
+        return finding;
+    }
+    $('findDevices').onclick = () => { findCameras(); };
     // Cameras come and go: keep the list current. A camera that went away is not reopened on its own; its tile has Reconnect.
     if (navigator.mediaDevices) navigator.mediaDevices.addEventListener('devicechange', () => refreshDevices(false));
     function renderCameras() {
@@ -929,6 +922,7 @@
         tab = name;
         for (const t of TABS) { $(t).hidden = t !== name; $('tab-' + t).setAttribute('aria-selected', String(t === name)); }
         if (remember) api.store.set('tab', name).catch(() => {});
+        if (name === 'cameras' && !found && !searching) findCameras();            // the Camera tab looks for cameras by itself, the first time it is opened
         render(); fitStage(); requestAnimationFrame(fitStage);
     }
     for (const t of TABS) $('tab-' + t).onclick = () => showTab(t);
@@ -946,9 +940,13 @@
     $('configure').onclick = () => { $('configureDialog').showModal(); render(); };
     $('packetJson').parentElement.addEventListener('toggle', render);
     $('programCamera').onchange = e => { programCamera = e.target.value || null; api.store.set('programCamera', programCamera).catch(() => {}); render(); };
+    $('manualAdd').onclick = () => openManual();
+    $('manualClose').onclick = () => $('manualDialog').close();
     $('camAddButton').onclick = () => addCamera(false);
     $('camAddSim').onclick = () => addCamera(true);
-    $('camUrl').addEventListener('keydown', e => { if (e.key === 'Enter') addCamera(false); });
+    // Enter adds, rather than closing the dialog as a form would.
+    $('camUrl').addEventListener('keydown', e => { e.stopPropagation(); if (e.key === 'Enter') { e.preventDefault(); addCamera(false); } });
+    $('camName').addEventListener('keydown', e => { e.stopPropagation(); if (e.key === 'Enter') { e.preventDefault(); $('camUrl').focus(); } });
     api.cameras.onStatus(state => { const wasRunning = engine.running; engine = state; if (engine.running && !wasRunning) refreshCameras(); else render(); });
     $('loadFiles').onclick = loadStartLists;
     $('saveFiles').onclick = saveStartLists;

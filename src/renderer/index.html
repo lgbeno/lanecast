@@ -81,28 +81,29 @@
 </div></section>
 
 <section id="cameras" role="tabpanel" aria-labelledby="tab-cameras" hidden>
-<div class="columns wide-left">
-<article>
-<p id="engineStatus" class="small">Starting the camera engine…</p>
-<div id="cameraList" class="tiles"></div>
-<p id="noCameras" class="small">No cameras yet. Add one on the right. Each camera has its own switch between the real picture and a stand-in photo or video, and its own settings.</p></article>
-<article id="camAdd"><h2>Add a camera</h2>
+<div class="columns camera-layout">
+<article id="camAdd" class="camera-find">
 <div class="actions"><button id="findDevices" class="primary" type="button">Find cameras</button><span id="searchStatus" class="small"></span></div>
-<p class="small">Looks on this computer (webcams, capture cards that show up as webcams, an iPhone as a camera) and on the network (cameras announcing NDI, RTSP or ONVIF), on every adapter.</p>
-<h3 class="later">On this computer</h3>
-<div id="deviceList" class="devices"></div>
-<p id="deviceNote" class="small"></p>
-<h3 class="later">On the network</h3>
-<div id="foundList" class="found"><p class="small">Press Find cameras to look.</p></div>
-<h3 class="later">By address</h3>
+<div id="foundList" class="found"></div>
+<div class="actions manual"><button id="manualAdd" type="button" class="quiet" title="For a camera the search does not find: its address, or a stand-in for one that is not here yet">Add manually…</button></div>
+</article>
+<article class="camera-have">
+<div id="cameraList" class="camera-rows"></div>
+<p id="noCameras" class="small">No cameras yet. Find cameras, then Add.</p>
+<p id="engineStatus" class="small">Starting the camera engine…</p>
+</article>
+</div>
+<dialog id="manualDialog"><form method="dialog"><h3>Add a camera manually</h3>
+<p class="small">For a camera Find cameras does not turn up.</p>
 <div class="field"><label for="camName">Name</label><input id="camName" placeholder="Pool, wide"></div>
 <div class="field"><label for="camUrl">Address</label><input id="camUrl" placeholder="rtsp://192.168.1.50/1" spellcheck="false"></div>
-<div class="actions"><button id="camAddButton" class="primary">Add</button><span id="camAddStatus" class="small"></span></div>
-<p class="small">Most PTZ cameras serve their main stream at <code>rtsp://&lt;camera ip&gt;/1</code>; if the camera asks for a login, write it as <code>rtsp://user:password@ip/1</code>. Set the camera to H.264. An NDI camera's RTSP output works today; NDI itself comes later.</p>
+<p class="small">Most PTZ cameras serve their main stream at <code>rtsp://&lt;camera ip&gt;/1</code>. If the camera asks for a login, write <code>rtsp://user:password@ip/1</code>. Set the camera to H.264.</p>
+<div class="actions"><button id="camAddButton" type="button" class="primary">Add</button><span id="camAddStatus" class="small"></span></div>
 <h3 class="later">Not here yet</h3>
-<p class="small">A camera you will set up later: add it simulated, with a photo or video from where it will stand, and give it the name your theme expects.</p>
-<div class="actions"><button id="camAddSim">Add a simulated camera</button></div></article>
-</div>
+<p class="small">A camera you will set up later: add it simulated, with a photo or video from where it will stand.</p>
+<div class="actions"><button id="camAddSim" type="button">Add a simulated camera</button></div>
+<div class="actions cd-foot"><span></span><button id="manualClose" type="button">Close</button></div>
+</form></dialog>
 <dialog id="cameraDialog"><form method="dialog"><h3 id="cameraDialogTitle">Camera</h3>
 <div class="field"><label for="cdName">Name</label><input id="cdName" placeholder="As your theme calls it, e.g. Wide or Finish"></div>
 <div class="field" id="cdDeviceField" hidden><label for="cdDevice">Device</label><select id="cdDevice"></select></div>
