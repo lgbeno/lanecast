@@ -59,7 +59,8 @@
             status: async () => ({ running: true, error: '', api: '', version: 'design mode', installed: true, ffmpeg: true, log: [] }),
             list: async () => cameras.map(c => ({ ...c, local: /^device:/.test(c.url), producers: 1, consumers: 1 })),
             // Design mode: one camera that can be added, and one stranded in another network, as the real search reports them.
-            discover: async () => { await new Promise(resolve => setTimeout(resolve, 900)); return { notes: [],
+            openNetworkPrivacy: async () => false,
+            discover: async () => { await new Promise(resolve => setTimeout(resolve, 900)); return { notes: [], blocked: null,
                 adapters: [{ name: 'en0', label: 'Wi-Fi', address: '192.168.68.82', netmask: '255.255.252.0', selfAssigned: false }, { name: 'en5', label: 'USB LAN', address: '169.254.174.205', netmask: '255.255.0.0', selfAssigned: true }],
                 cameras: [
                     { name: 'Deck cam', address: '192.168.68.40', host: '', kinds: ['ONVIF'], ndi: '', diagnosis: { reach: 'same-network', adapter: { label: 'Wi-Fi' } }, rtsp: { url: 'rtsp://192.168.68.40/1', needsLogin: false }, explanation: 'Reachable on Wi-Fi.' },

@@ -42,6 +42,8 @@
       "extendInfo": {
         "NSCameraUsageDescription": "Lanecast shows cameras attached to this computer, including an iPhone used as a camera, in the stream.",
         "NSCameraUseContinuityCameraDeviceType": true,
+        "NSLocalNetworkUsageDescription": "Lanecast looks for cameras on your network, and sends the overlay feed to other devices on it.",
+        "NSBonjourServices": ["_ndi._tcp", "_rtsp._tcp"],
         "NSMicrophoneUsageDescription": "Lanecast can take sound from a camera attached to this computer."
       }
     },

@@ -145,8 +145,8 @@ async function browse(list, { ms = 2600, services = SERVICES } = {}) {
     await Promise.all(list.map(adapter => new Promise(resolve => {
         const open = shared => {
             const socket = dgram.createSocket({ type: 'udp4', reuseAddr: true });
-            const entry = { socket, adapter, shared };
-            socket.on('message', buf => { try { const packet = decodePacket(buf); if (packet.response) records.add(packet.answers, adapter.name); } catch (e) { /* not ours to read */ } });
+            const entry = { socket, adapter, shared, heard: 0, errors: [] };
+            socket.on('message', buf => { entry.heard++; try { const packet = decodePacket(buf); if (packet.response) records.add(packet.answers, adapter.name); } catch (e) { /* not ours to read */ } });
             socket.once('error', () => { try { socket.close(); } catch (e) { /* closed */ } if (shared) open(false); else { notes.push(`could not listen on ${adapter.label}`); resolve(); } });
             socket.bind(shared ? MDNS_PORT : 0, shared ? undefined : adapter.address, () => {
                 try {
@@ -158,14 +158,27 @@ async function browse(list, { ms = 2600, services = SERVICES } = {}) {
         };
         open(true);                                                // the mDNS port, shared with the system's own responder; else a private port
     })));
-    const send = questions => { if (questions.length) for (const { socket, shared } of sockets) socket.send(encodeQuery(questions, { unicast: !shared }), MDNS_PORT, MDNS, () => {}); };
+    const send = questions => { if (questions.length) for (const entry of sockets) entry.socket.send(encodeQuery(questions, { unicast: !entry.shared }), MDNS_PORT, MDNS, error => { if (error) entry.errors.push(error.code || error.message); }); };
     send(question());
     const rounds = [0.25, 0.55, 0.8];
     let spent = 0;
     for (const share of rounds) { const until = ms * share; await wait(until - spent); spent = until; send(share < 0.3 ? question() : records.missing()); }
     await wait(ms - spent);
     for (const { socket } of sockets) try { socket.close(); } catch (e) { /* closed */ }
-    return { found: records.list(), notes };
+    // How the listening went, for telling "no camera out there" from "the system let nothing through".
+    const heard = { sockets: sockets.length, shared: sockets.filter(s => s.shared).length, packets: sockets.reduce((n, s) => n + s.heard, 0), errors: [...new Set(sockets.flatMap(s => s.errors))] };
+    return { found: records.list(), notes, heard };
+}
+/** Was the search shut out by the system rather than met with silence? On a shared mDNS socket this computer hears at least
+ *  its own question come back, and its own responder; hearing nothing at all, or being refused when sending, means a privacy
+ *  switch or a firewall is in the way. Returns what to tell the person, or null. */
+function blockedBy(heard, platform = process.platform) {
+    if (!heard || !heard.sockets) return null;
+    const refused = heard.errors.some(e => /EHOSTUNREACH|EPERM|EACCES/.test(e));
+    if (!refused && !(heard.shared > 0 && heard.packets === 0)) return null;
+    return platform === 'darwin' ? { what: 'macOS is not letting Lanecast use the local network, so it cannot hear cameras announce themselves.', where: 'System Settings → Privacy & Security → Local Network, and turn on Lanecast (it may be listed as Electron)', settings: true }
+        : platform === 'win32' ? { what: 'Windows Firewall may be keeping Lanecast from hearing cameras announce themselves.', where: 'Windows Security → Firewall & network protection → Allow an app through firewall → Lanecast, on Private networks', settings: false }
+        : { what: 'A firewall may be keeping Lanecast from hearing cameras announce themselves.', where: 'allow incoming UDP port 5353 (mDNS) for Lanecast', settings: false };
 }
 
 // ONVIF cameras answer a WS-Discovery probe, NDI or not.
@@ -290,7 +303,7 @@ async function discover({ ms = 2600 } = {}) {
         camera.explanation = explain(camera, list);
     }));
     cameras.sort((a, b) => a.name.localeCompare(b.name));
-    return { cameras, adapters: list, notes: mdns.notes };
+    return { cameras, adapters: list, notes: mdns.notes, blocked: cameras.length ? null : blockedBy(mdns.heard), heard: mdns.heard };
 }
 
-module.exports = { discover, diagnose, explain, merge, adapters, decodePacket, encodeQuery, encodeName, Records, parseProbeMatch, rtspStatus, sameNetwork, TYPE, labelsOf };
+module.exports = { discover, diagnose, explain, merge, adapters, blockedBy, decodePacket, encodeQuery, encodeName, Records, parseProbeMatch, rtspStatus, sameNetwork, TYPE, labelsOf };

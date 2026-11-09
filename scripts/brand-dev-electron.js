@@ -20,6 +20,9 @@ set('CFBundleName', 'Lanecast'); set('CFBundleDisplayName', 'Lanecast');
 // the phone is listed whenever it is nearby, as in Photo Booth, and picking it connects. The packaged app gets it
 // from package.json's extendInfo.
 if (!text.includes('NSCameraUseContinuityCameraDeviceType')) text = text.replace('<key>NSCameraUsageDescription</key>', '<key>NSCameraUseContinuityCameraDeviceType</key>\n\t<true/>\n\t<key>NSCameraUsageDescription</key>');
+// Searching for cameras means multicast on the local network, which macOS allows an app only after asking the person;
+// with this description it asks (and lists the app under Privacy → Local Network). Without it the search hears nothing.
+if (!text.includes('NSLocalNetworkUsageDescription')) text = text.replace('<key>NSCameraUsageDescription</key>', '<key>NSLocalNetworkUsageDescription</key>\n\t<string>Lanecast looks for cameras on your network, and sends the overlay feed to other devices on it.</string>\n\t<key>NSBonjourServices</key>\n\t<array>\n\t\t<string>_ndi._tcp</string>\n\t\t<string>_rtsp._tcp</string>\n\t</array>\n\t<key>NSCameraUsageDescription</key>');
 fs.writeFileSync(plist, text);
 if (fs.existsSync(icns)) fs.copyFileSync(icns, path.join(bundle, 'Resources', 'electron.icns'));
 // The Dock's tooltip and Finder take the *localized* name, and with none macOS falls back to the folder name, "Electron".

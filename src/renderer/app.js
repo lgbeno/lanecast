@@ -393,18 +393,23 @@
         else if (!$('deviceNote').textContent.startsWith('Camera access')) $('deviceNote').textContent = devices.some(d => /iphone|ipad/i.test(d.label)) ? ''
             : 'This is the list macOS offers right now (Photo Booth shows the same one). An iPhone appears while it is nearby with Bluetooth and Wi‑Fi on and Continuity Camera enabled.';
     }
-    $('findDevices').onclick = () => refreshDevices(true);
-    /** Cameras that announce themselves on the network, each with whether this computer can reach it and, if not, what to set. */
+    /** Find cameras: one press looks on this computer and listens on the network, together. */
+    async function findCameras() {
+        const button = $('findDevices'), status = $('searchStatus');
+        button.disabled = true; status.textContent = 'Looking on this computer and listening on every adapter…';
+        const [, onNetwork] = await Promise.all([refreshDevices(true).catch(() => {}), searchNetwork()]);
+        button.disabled = false;
+        status.textContent = `${devices.length} on this computer · ${onNetwork} on the network`;
+    }
+    $('findDevices').onclick = findCameras;
+    /** Cameras that announce themselves on the network, each with whether this computer can reach it and, if not, what to set. Returns how many. */
     async function searchNetwork() {
-        const button = $('searchNetwork'), status = $('searchStatus'), list = $('foundList');
-        button.disabled = true; status.textContent = 'Listening for cameras on every adapter…';
+        const list = $('foundList');
+        const el = (tag, className, text) => { const node = document.createElement(tag); if (className) node.className = className; if (text !== undefined) node.textContent = text; return node; };
         let result;
         try { result = await api.cameras.discover(); }
-        catch (e) { status.textContent = e.message.replace(/^Error invoking remote method '[^']+': (Error: )?/, ''); button.disabled = false; return; }
-        button.disabled = false;
+        catch (e) { list.replaceChildren(el('p', 'small', e.message.replace(/^Error invoking remote method '[^']+': (Error: )?/, ''))); return 0; }
         const searched = result.adapters.map(a => `${a.label} (${a.address})`).join(', ');
-        status.textContent = result.cameras.length ? `${result.cameras.length} found` : '';
-        const el = (tag, className, text) => { const node = document.createElement(tag); if (className) node.className = className; if (text !== undefined) node.textContent = text; return node; };
         const rows = result.cameras.map(camera => {
             const item = el('div', 'found-item'), head = el('div', 'found-head');
             head.append(el('strong', '', camera.name), el('span', 'small', [camera.address || camera.host, camera.kinds.join(' + ')].filter(Boolean).join(' · ')));
@@ -430,10 +435,22 @@
             }
             return item;
         });
+        if (!rows.length && result.blocked) {
+            // Not silence but a shut door: the system let nothing through. Say so, and take the person to the switch.
+            const item = el('div', 'found-item'), head = el('div', 'found-head');
+            head.append(el('strong', '', 'The search was shut out'));
+            item.append(head, el('p', 'small', `${result.blocked.what} Allow it in ${result.blocked.where}, then search again.`));
+            if (result.blocked.settings && api.cameras.openNetworkPrivacy) {
+                const line = el('div', 'fix'), open = el('button', '', 'Open that setting');
+                open.type = 'button'; open.onclick = () => api.cameras.openNetworkPrivacy().catch(showError);
+                line.append(open); item.append(line);
+            }
+            rows.push(item);
+        }
         if (!rows.length) rows.push(el('p', 'small', `No camera announced itself${searched ? ` on ${searched}` : ''}. Cameras are found by their NDI, RTSP or ONVIF announcement; one with those switched off, or on a network that blocks them, can still be added by its address below.${result.notes.length ? ' ' + result.notes.join('; ') + '.' : ''}`));
         list.replaceChildren(...rows);
+        return result.cameras.length;
     }
-    $('searchNetwork').onclick = searchNetwork;
     // Cameras come and go: keep the list current. A camera that went away is not reopened on its own; its tile has Reconnect.
     if (navigator.mediaDevices) navigator.mediaDevices.addEventListener('devicechange', () => refreshDevices(false));
     function renderCameras() {

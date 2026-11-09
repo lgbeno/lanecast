@@ -101,4 +101,17 @@ test('ONVIF probe answers and RTSP status lines are read', () => {
     assert.equal(D.rtspStatus('RTSP/1.0 401 Unauthorized\r\n'), 401);
     assert.equal(D.rtspStatus('HTTP/1.1 400 Bad Request\r\n'), 0);
 });
+test('silence is told from a shut door: hearing nothing at all, or being refused, is the system in the way', () => {
+    const heard = (over = {}) => ({ sockets: 2, shared: 2, packets: 14, errors: [], ...over });
+    assert.equal(D.blockedBy(heard(), 'darwin'), null, 'packets came in: nobody answered, that is all');
+    assert.equal(D.blockedBy(heard({ packets: 1 }), 'darwin'), null, 'even only its own question echoed back means the network is open');
+    const shut = D.blockedBy(heard({ packets: 0 }), 'darwin');
+    assert.match(shut.what, /macOS is not letting Lanecast use the local network/); assert.match(shut.where, /Privacy & Security → Local Network/); assert.equal(shut.settings, true);
+    assert.equal(D.blockedBy(heard({ errors: ['EHOSTUNREACH'] }), 'darwin').settings, true, 'refused when sending');
+    assert.equal(D.blockedBy(heard({ shared: 0, packets: 0 }), 'darwin'), null, 'on private ports nothing echoes, so silence proves nothing');
+    assert.equal(D.blockedBy(heard({ sockets: 0, shared: 0, packets: 0 }), 'darwin'), null, 'no adapter to listen on is another story');
+    assert.match(D.blockedBy(heard({ packets: 0 }), 'win32').what, /Windows Firewall/);
+    assert.match(D.blockedBy(heard({ packets: 0 }), 'linux').where, /5353/);
+    assert.equal(D.blockedBy(null), null);
+});
 console.log(`${test.count()} discover test groups passed`);

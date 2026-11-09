@@ -34,6 +34,7 @@ contextBridge.exposeInMainWorld('lanecast', {
         access: () => invoke('cameras:access'),
         list: () => invoke('cameras:list'),
         discover: () => invoke('cameras:discover'),
+        openNetworkPrivacy: () => invoke('cameras:openNetworkPrivacy'),
         add: camera => invoke('cameras:add', camera),
         update: (id, patch) => invoke('cameras:update', id, patch),
         remove: id => invoke('cameras:remove', id),
