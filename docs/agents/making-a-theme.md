@@ -58,7 +58,7 @@ If they have not set up cameras or positions yet, build the theme so it works wi
 | Windows | `%APPDATA%\Lanecast\themes\` |
 | Linux | `~/.config/Lanecast/themes/` |
 
-The easy way to start: the person presses **Theme tab → New theme…** and types a name. That copies the template into a new folder there and switches to it; **Open folder** shows where it is. Or make the folder yourself, by copying [`themes/template/`](../../themes/template) from this repository. For a scoreboard laid over the pool (a header across the top and a board on each lane), copy [`themes/clean/`](../../themes/clean) instead and rewrite its `theme.css`: see [the scoreboard themes](theme-requirements.md#the-scoreboard-themes).
+The easy way to start: the person presses **Theme tab → New theme…** and types a name. That copies a theme into a new folder there and switches to it; **Open folder** shows where it is. The dialog's **Start from** says which: the template unless they pick another. Or make the folder yourself, by copying [`themes/template/`](../../themes/template) from this repository. For a scoreboard laid over the pool (a header across the top and a board on each lane), start from **Clean** instead ([`themes/clean/`](../../themes/clean)) and rewrite its `theme.css`: see [the scoreboard themes](theme-requirements.md#the-scoreboard-themes).
 
 That folder also holds `lanecast-theme.js` and `preview.html`. The app keeps both current; leave them alone.
 

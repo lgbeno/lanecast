@@ -241,7 +241,7 @@ ipcMain.handle('cameras:mediaBytes', (event, id) => cameras.mediaBytes(String(id
 ipcMain.handle('themes:list', () => themes.list());
 ipcMain.handle('themes:active', () => store.get('theme', 'b-classic'));
 ipcMain.handle('themes:select', (event, id) => { if (!themes.get(String(id))) throw new Error('No such theme'); store.set('theme', String(id)); return String(id); });
-ipcMain.handle('themes:create', (event, name) => themes.createFromTemplate(String(name || '')));
+ipcMain.handle('themes:create', (event, name, from) => themes.create(String(name || ''), from ? String(from) : ''));
 // Open a theme's own folder (one of the user's, or the project's copy); for a built-in theme, or none, the folder the user's themes live in.
 ipcMain.handle('themes:openFolder', async (event, id) => {
     const theme = id ? themes.get(String(id)) : null, folder = theme && theme.source !== 'built-in' ? theme.folder : themes.userDir;

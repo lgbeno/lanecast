@@ -11,7 +11,7 @@ Longer forms of this, for when you need them: `docs/agents/making-a-theme.md` (t
 
 ## Start
 
-- A new theme: the user presses **New theme…** on the Theme tab and names it (that copies `themes/template/` into their themes folder and switches to it), then **Open folder** shows where it is. Or copy `themes/template/` there yourself and give it a name in `theme.json`.
+- A new theme: the user presses **New theme…** on the Theme tab and names it (that copies the theme picked under **Start from**, the template unless they choose another such as Clean, into their themes folder and switches to it; the copy gets a blank `REQUIREMENTS.md`, and what the theme it came from was asked to be as `STARTED-FROM.md`), then **Open folder** shows where it is. Or copy `themes/template/` there yourself and give it a name in `theme.json`.
 - An existing theme: edit it in place. Built-in themes under `themes/` in the repository are examples; the user's are in the app's data folder.
 - Keep this script tag in every page, exactly: `<script src="../lanecast-theme.js"></script>`.
 - Changes show as files are saved: the app follows the theme in use on disk and reads it again. **Reload** on the Theme tab is the fallback.

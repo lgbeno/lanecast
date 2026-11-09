@@ -2,7 +2,7 @@
 
 A theme goes wrong long before any code is written: when "a Halloween theme" is taken as enough to start on. This page is about the step before building: getting what the person wants onto one page, in a shape that the next agent (or you, tomorrow, with no memory of today) can build from and check against.
 
-**The form:** [`themes/template/REQUIREMENTS.md`](../../themes/template/REQUIREMENTS.md). A copy lands in every theme started with **Theme tab → New theme…**.
+**The form:** [`themes/template/REQUIREMENTS.md`](../../themes/template/REQUIREMENTS.md). A copy lands in every theme started with **Theme tab → New theme…**, under the new theme's name. A theme started from another (the dialog's **Start from**) also gets `STARTED-FROM.md`: the requirements of the theme it was copied from, which is what the copy does until you change it. Read that, fill in the form with what should be different, and delete `STARTED-FROM.md` when the form says everything.
 
 **Filled in, four times.** Read one before filling in your own:
 

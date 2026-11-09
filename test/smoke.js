@@ -298,6 +298,20 @@ app.on('browser-window-created', (event, win) => {
         const themeFolder = path.join(userData, 'themes', 'smoke-theme');
         check(/^Smoke Theme · overlay ready · control panel ready$/.test(made.status) && made.folder && /as you save/.test(made.about) && /^Mine · v[\d.]+ · control panel\|In use\|true$/.test(made.row) && made.overlay.startsWith('theme://u-smoke-theme/') && fs.existsSync(path.join(themeFolder, 'overlay.html')) && fs.existsSync(path.join(userData, 'themes', 'preview.html')) && fs.existsSync(path.join(userData, 'themes', 'lanecast-theme.js')),
             `New theme… makes one from the template, in its own folder beside the runtime and the preview page, and switches to it: ${made.status}`);
+        // New theme… can start from any theme: here from Clean, which brings the scoreboard engine with it.
+        await js(`document.getElementById('newThemeOpen').click()`); await wait(300);
+        const offered = await js(`[...document.getElementById('newThemeFrom').options].map(o => o.textContent).join('|') + ' / ' + document.getElementById('newThemeAbout').textContent.slice(0, 20)`);
+        await js(`(() => { const s = document.getElementById('newThemeFrom'); s.value = 'b-clean'; s.onchange(); document.getElementById('newThemeName').value = 'Smoke Board'; })()`);
+        const aboutClean = await js(`document.getElementById('newThemeAbout').textContent`);
+        await js(`document.getElementById('newTheme').click()`);
+        for (let i = 0; i < 30 && await js(`document.getElementById('newThemeDialog').open`); i++) await wait(300);
+        await wait(2500);
+        const boardFolder = path.join(userData, 'themes', 'smoke-board'), boardStatus2 = await js(`${text('themeStatus')}`);
+        const rowsDrawn = frame('overlay') ? await frame('overlay').executeJavaScript(`location.href + ' ' + document.querySelectorAll('.lane-box').length`).catch(() => '') : '';
+        check(/^Template \(a plain start\)\|.*Clean.*Arcade|^Template \(a plain start\)\|.*Arcade.*Clean/.test(offered) && /^The plain scoreboard/.test(aboutClean) && boardStatus2 === 'Smoke Board · overlay ready · control panel ready' && /^theme:\/\/u-smoke-board\/overlay\.html\S* 8$/.test(rowsDrawn)
+            && fs.existsSync(path.join(boardFolder, 'scoreboard.js')) && fs.readFileSync(path.join(boardFolder, 'REQUIREMENTS.md'), 'utf8').startsWith('# Requirements: Smoke Board') && fs.existsSync(path.join(boardFolder, 'STARTED-FROM.md')),
+            `New theme… starts from any theme: one made from Clean draws its scoreboard and has a blank requirements form: ${boardStatus2}; offered ${offered.slice(0, 60)}…`);
+        await js(`document.getElementById('tab-theme').click()`); await useTheme('Smoke Theme'); await wait(2000);
         // Saving one of its files is enough: the theme in use is read again by itself.
         fs.appendFileSync(path.join(themeFolder, 'overlay.html'), '\n<meta name="smoke-marker" content="saved">\n');
         let followed = false; for (let i = 0; i < 20 && !followed; i++) { await wait(400); const f = win.webContents.mainFrame.framesInSubtree.find(f => f.url.startsWith('theme://u-smoke-theme/overlay.html')); followed = !!f && await f.executeJavaScript(`!!document.querySelector('meta[name="smoke-marker"]')`).catch(() => false); }

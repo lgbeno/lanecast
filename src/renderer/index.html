@@ -119,7 +119,7 @@
 <div class="columns pane-layout">
 <article id="themeFind" class="theme-find">
 <div id="themeList" class="found"></div>
-<div class="actions manual"><button id="newThemeOpen" type="button" class="quiet" title="Start a theme of your own from the template">New theme…</button></div>
+<div class="actions manual"><button id="newThemeOpen" type="button" class="quiet" title="Start a theme of your own from the template or from any other theme">New theme…</button></div>
 </article>
 <article class="theme-now">
 <p id="themeStatus" class="theme-now-head"><strong id="themeName">No theme</strong><span id="themeState"></span></p>
@@ -130,7 +130,9 @@
 </div>
 <dialog id="newThemeDialog"><form method="dialog"><h3>New theme</h3>
 <div class="field"><label for="newThemeName">Name</label><input id="newThemeName" placeholder="Dolphins 2026"></div>
-<p class="small">It starts as a copy of the template, in a folder of its own, and is switched to. Edit its files, by hand or with an AI assistant pointed at <code>docs/themes.md</code>; the stream follows as you save.</p>
+<div class="field"><label for="newThemeFrom">Start from</label><select id="newThemeFrom"></select></div>
+<p id="newThemeAbout" class="small"></p>
+<p class="small">It starts as a copy, in a folder of its own, and is switched to. Edit its files, by hand or with an AI assistant; the stream follows as you save.</p>
 <p id="themeNote" class="small"></p>
 <div class="actions cd-foot"><span></span><span><button id="newThemeCancel" type="button">Cancel</button> <button id="newTheme" type="button" class="primary">Create</button></span></div>
 </form></dialog>

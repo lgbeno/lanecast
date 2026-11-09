@@ -114,6 +114,10 @@
         themes: {
             list: async () => [
                 { id: 'classic', name: 'Classic', version: '1.0.0', author: 'Lanecast', description: 'A lower third: event and heat, the title, the clock, the lanes.', source: 'built-in', overlay: 'overlay.html', control: null, url: '../../themes/classic/' },
+                { id: 'clean', name: 'Clean', version: '1.0.0', author: 'Lanecast', description: 'The plain scoreboard: event, heat, the name of the event and the clock across the top, and a board on each lane.', source: 'built-in', overlay: 'overlay.html', control: { page: 'control.html', width: 300, height: 0 }, url: '../../themes/clean/' },
+                { id: 'arcade', name: 'Arcade', version: '1.0.0', author: 'Lanecast', description: 'An 8-bit scoreboard on the lanes: bevelled blocks, a lit marquee, coins for finishers and a duck.', source: 'built-in', overlay: 'overlay.html', control: { page: 'control.html', width: 300, height: 0 }, url: '../../themes/arcade/' },
+                { id: 'jaguars', name: 'Jaguars', version: '1.0.0', author: 'Lanecast', description: 'Forest green and gold, with every swimmer in the colours of their school.', source: 'built-in', overlay: 'overlay.html', control: { page: 'control.html', width: 300, height: 0 }, url: '../../themes/jaguars/' },
+                { id: 'spooky', name: 'Spooky Splash', version: '1.0.0', author: 'Lanecast', description: 'A Halloween meet, fun rather than frightening: gravestones, a coffin, jack-o-lanterns and a spider.', source: 'built-in', overlay: 'overlay.html', control: { page: 'control.html', width: 300, height: 0 }, url: '../../themes/spooky/' },
                 { id: 'template', name: 'Template', version: '1.0.0', author: 'Lanecast', description: 'A starting point for your own theme, with a control panel.', source: 'built-in', overlay: 'overlay.html', control: { page: 'control.html', width: 420, height: 96 }, url: '../../themes/template/' }
             ],
             active: async () => localStorage.getItem('lanecast-mock:theme') || 'classic',
