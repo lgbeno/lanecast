@@ -82,7 +82,7 @@ const camera = () => new Promise(resolve => {
         if (ANSWERS[hex]) return reply(ANSWERS[hex]);                                    // questions are answered
         got.push(hex);                                                                  // everything else is noted,
         if (cam.refuse && hex.startsWith('81010447') && hex.length === 26) return reply('906141ff');          // (a camera that will not take zoom and focus together)
-        reply('9041ff'); setTimeout(() => reply('9051ff'), cam.slow);                   // acknowledged, and reported done
+        reply('9041ff'); setTimeout(() => reply('9051ff'), cam.slow).unref();                   // acknowledged, and reported done
     });
     socket.bind(1259, '127.0.0.1', () => resolve(cam));
     socket.on('error', () => resolve(null));                                  // the port is taken: skip

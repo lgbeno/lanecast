@@ -48,11 +48,15 @@ button[aria-pressed="true"] { background: #ffcc33; border-color: #ffcc33; color:
   // The overlay says which buttons of its own the theme has
   Lanecast.on('overlay', m => {
     if (!m || !Array.isArray(m.buttons)) return;
+    told = true;
     $('extrasTitle').hidden = !m.buttons.length;
     $('extras').replaceChildren(...m.buttons.map(b => { const e = document.createElement('button'); e.textContent = b.label; e.onclick = () => Lanecast.send({ action: b.action }); return e; }));
   });
-  Lanecast.send({ ask: 'buttons' });
-  Lanecast.on('state', s => { $('now').innerHTML = s.event ? `Event <b>${s.event}</b> heat <b>${s.heat}</b> · ${s.phase} · <b>${s.clock || '0:00.0'}</b>` : 'No event on the board'; });
+  // Ask once the app has said hello (before that, an answer could not reach this page), and again with the first scoreboard if none came
+  let told = false;
+  const ask = () => { if (!told) Lanecast.send({ ask: 'buttons' }); };
+  Lanecast.on('hello', ask);
+  Lanecast.on('state', s => { ask(); $('now').innerHTML = s.event ? `Event <b>${s.event}</b> heat <b>${s.heat}</b> · ${s.phase} · <b>${s.clock || '0:00.0'}</b>` : 'No event on the board'; });
 })();
 </script>
 </body>

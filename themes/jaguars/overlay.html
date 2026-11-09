@@ -1,0 +1,60 @@
+<!doctype html>
+<!--
+  Jaguars — a Lanecast theme. The scoreboard on the lanes in Ashwaubenon's green and gold, with every swimmer's school
+  shown in that school's own colours.
+
+  scoreboard.js, scoreboard.css, control.html and settings.html are the shared engine (see themes/clean); theme.css is the
+  look; teams.js is the table of schools; teams.html is the dialog where the person says which team code is which school.
+  This page adds the meet's name under the header and paints each lane with its school.
+  REQUIREMENTS.md says what this theme was asked to be.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Jaguars — Lanecast theme</title>
+<link rel="stylesheet" href="scoreboard.css">
+<link rel="stylesheet" href="theme.css">
+</head>
+<body>
+<div id="sb"></div>
+<script src="../lanecast-theme.js"></script>
+<script src="scoreboard.js"></script>
+<script src="teams.js"></script>
+<script>
+(() => {
+  // ---- a lane takes its school's colours, and the school's full name in place of the code
+  function paint(row, lane) {
+    const team = JaguarTeams.match(lane.team, Lanecast.settings.codes);
+    row.style.setProperty('--team-primary', team ? team.primary : '#394c44');
+    row.style.setProperty('--team-secondary', team ? team.secondary : '#bdc7c1');
+    const label = team ? team.name : lane.team || '';                    // a team that is not in the table keeps its own name
+    for (const e of row.querySelectorAll('.lineup-team, .swimmer-team')) { e.textContent = label; e.hidden = !label; }
+    noted(lane.team);
+  }
+  const board = Scoreboard.start({
+    lane: paint,
+    meetInName: false,                                                   // the meet's name has its own strip
+    buttons: [{ label: 'Team colours…', action: 'teams' }]
+  });
+  const repaint = () => { const s = Lanecast.state; if (s && s.event != null) for (const lane of s.lanes) { const row = Scoreboard.row(lane.lane); if (row) paint(row, lane); } };
+
+  // ---- the team codes seen in this meet's start lists, kept with the settings so the dialog can offer them
+  let seen = [], saving = 0;
+  function noted(code) {
+    if (!code || seen.includes(code)) return;
+    seen = [...seen, code].slice(-60);
+    clearTimeout(saving); saving = setTimeout(() => Lanecast.saveSettings({ seen }), 1500);
+  }
+
+  // ---- the meet's name, on a strip under the header
+  const strip = document.createElement('div'); strip.className = 'meet-strip'; strip.innerHTML = '<img src="claws.svg" alt=""><span class="meet-title"></span>';
+  board.root.append(strip);
+  const meet = () => { const s = Lanecast.state, set = Scoreboard.settings; strip.querySelector('.meet-title').textContent = set.meet || ''; strip.classList.toggle('show', !!(set.meet && set.header !== false && s && s.event != null)); };
+  Lanecast.on('state', meet);
+
+  Lanecast.on('settings', s => { if (Array.isArray(s.seen)) seen = [...new Set([...s.seen, ...seen])].slice(-60); meet(); repaint(); });
+  Lanecast.on('control', m => { if (m && m.action === 'teams') Lanecast.dialog('teams.html', { title: 'Team colours', width: 560, height: 560 }); });
+})();
+</script>
+</body>
+</html>

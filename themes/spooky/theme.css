@@ -1,0 +1,104 @@
+/* Spooky Splash: a Halloween night in purple and pumpkin orange. Gravestones, a coffin, jack-o'-lanterns, a little glow.
+ * Friendly, not frightening. Sizes in the lanes are in em (see scoreboard.css); in the header, px on the 1920 x 1080 canvas. */
+:root { --ink: #130e20; --orange: #ff9b38; --gold: #ffdc89; --violet: #b59aff; --green: #c2f790; --bone: #fff4df; --from: 35px; }
+#sb.left { --from: -35px; }
+#sb { font-family: "Trebuchet MS", Arial, sans-serif; color: var(--bone); }
+@keyframes materialize { from { opacity: 0; transform: translateY(12px) scale(.96); } to { opacity: 1; transform: none; } }
+@keyframes vanish { from { opacity: 1; transform: none; } to { opacity: 0; transform: translateY(10px) scale(.96); } }
+@keyframes float { 50% { transform: translateY(-4px) rotate(4deg); } }
+
+/* ---- header: two gravestones, a coffin, the timekeeper ---- */
+.header-container { gap: 10px; top: 12px; left: 14px; right: 14px; height: 76px; }
+#eventBox, #heatBox { width: 112px; }
+#timerBox { width: 250px; }
+.header-content { position: relative; }
+.header-content.visible, .header-content.appearing { animation: materialize .35s both; }
+.header-content.hiding, .header-content.exploding { animation: vanish .3s both; }
+#heatBox .header-content.visible { animation-delay: .08s; }
+.header-box.fixed .header-content { padding: 5px 12px; flex-direction: column; gap: 1px; border: 1px solid #8b8196; border-radius: 27px 27px 7px 7px; background: linear-gradient(120deg, #565066, #272332 70%); box-shadow: inset 0 0 0 4px rgba(255, 255, 255, .02), 0 5px 12px rgba(0, 0, 0, .53); }
+.header-box.fixed .header-content::before { content: ""; position: absolute; inset: 5px; border: 1px solid rgba(201, 187, 207, .19); border-radius: 22px 22px 3px 3px; pointer-events: none; }
+.label { font-size: 10px; letter-spacing: 3px; color: #d3c9dc; margin: 0; }
+.value { font: bold 35px/1 Georgia, serif; color: #fff0d4; text-shadow: 0 2px 1px #000; }
+/* The coffin: a brass edge, a dark lining, and a lid that slides away to show the name */
+#nameBox .header-content { --coffin: polygon(34px 0, calc(100% - 34px) 0, 100% 50%, calc(100% - 34px) 100%, 34px 100%, 0 50%); padding: 0 60px; background: linear-gradient(180deg, #e0a25a, #8f5d2c); clip-path: var(--coffin); }
+#nameBox .header-content::before { content: ""; position: absolute; inset: 3px; clip-path: var(--coffin); background: radial-gradient(ellipse at 50% 0, #613668, transparent 75%), linear-gradient(110deg, #211525, #322037, #211525); }
+#nameBox .header-content::after { content: ""; position: absolute; inset: 3px; clip-path: var(--coffin); transform: translateX(101%); pointer-events: none;
+  background: radial-gradient(circle at 12% 50%, #e8c36a 0 5px, transparent 6px), radial-gradient(circle at 88% 50%, #e8c36a 0 5px, transparent 6px), repeating-linear-gradient(90deg, #6a4426 0 118px, #3f2713 118px 121px), #6a4426; }
+#nameBox .header-content.visible::after { animation: lid 1s cubic-bezier(.6, 0, .3, 1) .35s both; }
+#nameBox.creak .header-content::after { animation: creak 1.3s cubic-bezier(.6, 0, .3, 1) both; }
+@keyframes lid { from { transform: none; } to { transform: translateX(101%); } }
+@keyframes creak { 0% { transform: translateX(101%); } 35%, 55% { transform: none; } 100% { transform: translateX(101%); } }
+.event-name-wrapper { position: relative; z-index: 1; }
+.event-name { font: bold 29px/1.1 Georgia, serif; letter-spacing: .5px; text-transform: none; color: var(--bone); text-shadow: 0 2px 2px #000; }
+/* The clock: a mossy stone, a zombie, green figures */
+.timer-content { justify-content: flex-start; gap: 12px; padding: 0 14px; border: 1px solid #779b65; border-radius: 9px; background: radial-gradient(ellipse at 0 100%, #344927, #151e1b 75%); box-shadow: 0 5px 12px rgba(0, 0, 0, .53); display: grid; grid-template-columns: auto 1fr; grid-template-rows: auto auto; align-content: center; column-gap: 12px; row-gap: 0; }
+.timer-content.visible { animation: materialize .35s both; }
+.timer-content.hiding { animation: vanish .3s both; }
+.timekeeper { grid-row: 1 / 3; width: 46px; height: 46px; align-self: center; }
+.timekeeper svg { width: 100%; height: 100%; display: block; }
+.timer-content.visible .timekeeper { animation: float .7s ease-in-out infinite; }
+.timer-label { color: var(--green); font-size: 10px; letter-spacing: 3px; margin: 0; align-self: end; }
+.running-time { font: bold 33px/1.1 "Courier New", monospace; color: #e1ffc4; text-shadow: 0 0 15px rgba(164, 233, 119, .25); letter-spacing: 0; align-self: start; }
+
+/* ---- lanes ---- */
+.lane-content, .lineup-content { padding: 0 .9em; border: 1px solid rgba(143, 111, 184, .4); border-left: 3px solid var(--violet); border-radius: 7px 0 0 7px; background: radial-gradient(ellipse at 0 0, rgba(101, 64, 119, .38), transparent 70%), linear-gradient(100deg, rgba(32, 22, 41, .96), rgba(23, 18, 33, .93)); box-shadow: inset 0 1px rgba(255, 255, 255, .07), 0 4px 10px rgba(0, 0, 0, .4); }
+#sb.left :is(.lane-content, .lineup-content) { border-left-width: 1px; border-right: 3px solid var(--violet); border-radius: 0 7px 7px 0; }
+/* A little ghost introduces each swimmer */
+.lineup-content::before { content: ""; width: 1.5em; height: 1.8em; flex-shrink: 0; margin: 0 .5em 0 .1em; border-radius: 50% 50% 22% 22%;
+  background: radial-gradient(ellipse at 35% 40%, #251930 0 .13em, transparent .19em), radial-gradient(ellipse at 65% 40%, #251930 0 .13em, transparent .19em), linear-gradient(#f5eaff, #b7a1d7); }
+.lineup-content.visible::before { animation: float 2.4s ease-in-out infinite; }
+.lineup-info, .lane-info { gap: .75em; padding: 0 .5em; }
+.lineup-name, .swimmer-name { font-size: 1.45em; font-weight: bold; letter-spacing: .5px; }
+.lineup-name { margin: 0; flex: 1; }
+.swimmer-name { flex: 1; }
+.lineup-team { color: #dac5f4; background: rgba(180, 154, 255, .08); border: 1px solid rgba(180, 154, 255, .19); border-radius: 4px; padding: .3em .6em; font-size: .85em; max-width: 30%; }
+.lineup-team:empty { display: none; }
+.place-indicator { min-width: 2.1em; margin: 0; font: bold 1.6em Georgia, serif; color: var(--violet); }
+.final-time { font: 700 2.15em/1.1 "Courier New", monospace; color: #fff7df; text-shadow: 0 2px 3px #000; }
+.lane-content.first-place { border-color: #ffc469; background: radial-gradient(ellipse at 0 50%, rgba(168, 77, 35, .33), transparent 80%), linear-gradient(90deg, rgba(72, 42, 29, .96), rgba(33, 23, 36, .96)); box-shadow: inset 0 1px rgba(255, 231, 165, .2), 0 0 18px rgba(255, 155, 56, .13), 0 4px 10px rgba(0, 0, 0, .4); }
+.first-place .place-indicator { color: var(--gold); text-shadow: 0 0 12px rgba(255, 181, 67, .5); }
+.lane-content.second-place { border-left-color: #d9e1f2; } .second-place .place-indicator { color: #d9e1f2; }
+.lane-content.third-place { border-left-color: #e7a87f; } .third-place .place-indicator { color: #e7a87f; }
+.lane-content.visible, .lineup-content.visible, .split-content.visible { animation: unveil .5s cubic-bezier(.16, 1, .3, 1) both; }
+.lane-content.hiding { animation: vanish .22s both; }
+.lineup-content.hiding { animation: ghostExit .3s both; }
+.split-content.hiding { animation: retract .3s both; }
+@keyframes unveil { from { transform: translateX(var(--from)); opacity: 0; } to { transform: none; opacity: 1; } }
+@keyframes retract { from { transform: none; opacity: 1; } to { transform: translateX(var(--from)); opacity: 0; } }
+@keyframes ghostExit { from { transform: none; opacity: 1; } to { transform: scale(1.06); filter: blur(5px); opacity: 0; } }
+/* The lane's number, carved into a jack-o'-lantern and lit from inside */
+.lane-indicator { font-size: 1.75em; right: .43em; width: 2.07em; height: 1.71em; border-radius: 44% 44% 42% 42%; border: 1px solid #ffba55;
+  background: repeating-radial-gradient(ellipse at 50% 48%, transparent 0 .36em, rgba(129, 51, 12, .33) .39em .43em, transparent .46em .64em), radial-gradient(ellipse at 45% 25%, #ffcc68, #ec7524 60%, #8f3615);
+  box-shadow: inset 0 -.18em .25em rgba(90, 30, 5, .5), 0 3px 8px rgba(0, 0, 0, .5), 0 0 14px rgba(255, 155, 56, .25); font-family: Georgia, serif; color: #fff3b0; text-shadow: 0 0 .3em #ffb21e, 0 0 .1em #7a2a00, 0 1px 0 #5a1c00; }
+#sb.left .lane-indicator { left: .43em; }
+.lane-indicator::before { content: ""; position: absolute; top: -.29em; left: .96em; width: .25em; height: .36em; background: linear-gradient(90deg, #607443, #a8bc63); border-radius: .18em .04em 0 0; transform: rotate(15deg); }
+.lane-indicator::after { content: ""; position: absolute; top: -.21em; left: 1.29em; width: .43em; height: .21em; border-top: 2px solid #98b36f; border-radius: 50%; transform: rotate(-20deg); }
+/* A split: green, like something glowing in a jar */
+.split-content { border: 1px solid #b0d889; border-radius: 6px 0 0 6px; background: linear-gradient(100deg, rgba(28, 48, 37, .96), rgba(38, 55, 39, .96)); box-shadow: 0 0 14px rgba(165, 238, 121, .13); }
+#sb.left .split-content { border-radius: 0 6px 6px 0; }
+.split-time { color: #ddffb8; font: bold 1.9em "Courier New", monospace; }
+
+/* ---- the creatures ---- */
+.runner { position: absolute; left: -90px; top: 22px; width: 62px; height: 54px; opacity: 0; z-index: 20; pointer-events: none; filter: drop-shadow(0 0 8px rgba(201, 188, 255, .5)); }
+.runner svg, .bat svg, .spider svg { width: 100%; height: 100%; display: block; }
+.runner svg { animation: float .65s ease-in-out infinite; }
+.runner.running { animation: parade 5s linear both; }
+.runner.witch.running { animation-duration: 4s; } .runner.zombie.running { animation-duration: 6s; } .runner.mummy.running { animation-duration: 5.5s; }
+.runner.witch { top: 4px; }
+@keyframes parade { 0% { left: -70px; opacity: 0; } 6%, 94% { opacity: 1; } 100% { left: 1900px; opacity: 0; } }
+.bat { position: absolute; left: -90px; width: var(--size, 48px); height: calc(var(--size, 48px) * .375); opacity: 0; pointer-events: none; filter: drop-shadow(0 0 5px rgba(181, 154, 255, .8)); animation: flock 4.5s linear both, flap .22s steps(2) infinite; }
+@keyframes flock { 0% { left: -90px; opacity: 0; margin-top: 0; } 8% { opacity: 1; } 35% { margin-top: -40px; } 65% { margin-top: 26px; } 92% { opacity: 1; } 100% { left: 1960px; opacity: 0; margin-top: -10px; } }
+@keyframes flap { from { transform: scaleY(1); } to { transform: scaleY(.45); } }
+/* The web hangs from the corner under the gravestones; the spider lets itself down on a thread */
+.web { position: absolute; left: 0; top: 94px; width: 190px; height: 190px; pointer-events: none; opacity: 0; transition: opacity .8s; }
+.web.spun { opacity: .8; }
+.web > svg { width: 100%; height: 100%; display: block; overflow: visible; }
+.strand { stroke: rgba(255, 255, 255, .72); stroke-width: 2.5; fill: none; stroke-dasharray: 900; stroke-dashoffset: 900; }
+.web.spun .strand { animation: weave 2.5s ease both; }
+@keyframes weave { to { stroke-dashoffset: 0; } }
+.spider { position: absolute; left: 150px; top: 0; width: 30px; height: 18px; transform: translateY(0); opacity: 0; filter: drop-shadow(0 0 4px rgba(181, 154, 255, .9)); }
+.spider i { position: absolute; left: 50%; bottom: 100%; width: 1px; height: 120px; background: rgba(255, 255, 255, .6); }
+.web.spun .spider { animation: descend 2.2s ease-out 1.6s both, sway 3s ease-in-out 3.8s infinite; }
+@keyframes descend { from { transform: translateY(0); opacity: 0; } 15% { opacity: 1; } to { transform: translateY(120px); opacity: 1; } }
+@keyframes sway { 0%, 100% { transform: translateY(120px); opacity: 1; } 50% { transform: translateY(104px); opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .runner, .bat { display: none !important; } }

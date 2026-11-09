@@ -1,0 +1,11 @@
+{
+  "name": "Jaguars",
+  "version": "1.0.0",
+  "author": "Lanecast",
+  "description": "Ashwaubenon Jaguars: forest green and gold, dark solid panels, large finish times, and every swimmer's school in its own colours. Tell it which team codes are which schools under Team colours; line it up with your pool in its settings.",
+  "overlay": "overlay.html",
+  "control": {
+    "page": "control.html",
+    "width": 300
+  }
+}

@@ -1,0 +1,92 @@
+<!doctype html>
+<!--
+  Spooky Splash — a Lanecast theme. The scoreboard on the lanes, dressed for a Halloween meet. Fun for all ages: nothing
+  here is meant to frighten.
+
+  scoreboard.js, scoreboard.css, control.html and settings.html are the shared engine (see themes/clean); theme.css is the
+  look; this page adds the creatures: the zombie beside the clock, a character that crosses the header at each new event,
+  bats when an event is over, and the spider that spins a web when a heat is done. All of the art is drawn here, in code,
+  as pixel maps; nothing is loaded from anywhere. REQUIREMENTS.md says what this theme was asked to be.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Spooky Splash — Lanecast theme</title>
+<link rel="stylesheet" href="scoreboard.css">
+<link rel="stylesheet" href="theme.css">
+</head>
+<body>
+<div id="sb"></div>
+<script src="../lanecast-theme.js"></script>
+<script src="scoreboard.js"></script>
+<script>
+(() => {
+  const board = Scoreboard.start({
+    labels: { clock: 'Race time' },
+    fragments: ['#ec7524', '#ffcc68', '#8f3615', '#a8bc63'],              // a pumpkin, smashed
+    buttons: [{ label: 'Send a character across', action: 'character' }, { label: 'Release the bats', action: 'bats' }, { label: 'Spin a web', action: 'web' }]
+  });
+  const root = board.root, set = () => Scoreboard.settings;
+  const quiet = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const racing = () => !!(Lanecast.state && Lanecast.state.phase === 'racing');
+
+  // ---- pixel art, from a map: one character a pixel
+  const sprite = (rows, colours) => `<svg viewBox="0 0 ${rows[0].length} ${rows.length}" shape-rendering="crispEdges">` + rows.map((row, y) => [...row].map((c, x) => c === '.' ? '' : `<rect x="${x}" y="${y}" width="1.03" height="1.03" fill="${colours[c]}"/>`).join('')).join('') + '</svg>';
+  const ART = {
+    ghost: [{ G: '#f5eaff', S: '#b7a1d7', K: '#251930' }, ['....GGGGGG......', '...GGGGGGGG.....', '..GGGGGGGGGG....', '..GGKKGGKKGG....', '..GGKKGGKKGG....', '..GGGGGGGGGG....', '..GGGGKKGGGG....', '..GGGGGGGGGG....', '..GGGGGGGGGGS...', '..GGGGGGGGGGSS..', '..GGGGGGGGGGGSS.', '..GGGGGGGGGGGGS.', '..GG.GGG.GGG.GS.', '..G...G...G...S.']],
+    witch: [{ H: '#2a1a3a', O: '#ff9b38', F: '#9bd36b', K: '#1b1026', P: '#5b2d82', B: '#b07a3a', Y: '#e8c36a' }, ['......H.........', '.....HH.........', '....HHHH........', '...HHHHHH.......', '..OOOOOOOO......', '.HHHHHHHHHH.....', '...FFFFFF.......', '...FKFFKF.......', '...FFFFFFF......', '....PPPPP.......', '...PPPPPPP......', 'YYYBBBBBBBBBBBBB', 'YYYY.PPPPPPP....', 'YYY...PP.PP.....']],
+    zombie: [{ D: '#3a8a3a', Z: '#4a9a4a', Y: '#cccc00', M: '#1a4a1a', K: '#2b2b33', B: '#2244aa' }, ['....DDDDDD......', '...ZZZZZZZZ.....', '...ZYYZZYYZ.....', '...ZZZZZZZZ.....', '...ZZMMMMZZ.....', '....DDDDDD......', '...KKKKKKKKZZZZ.', '..KKKKKKKKKZZZZ.', '..KKKKKKKK......', '..KKKKKKKK......', '...BBBBBB.......', '...BBB.BBB......', '...BB...BB......', '..DDD...DDD.....']],
+    mummy: [{ W: '#efe6d0', S: '#c9bda0', K: '#111111' }, ['....WWWWWW......', '...WWSWWWWW.....', '...WKKWWKKW.....', '...SSWWWSSW.....', '...WWWWWWWW.....', '....WSSWWW......', '...WWWWWWWWWWW..', '..WWSSWWWWSSWW..', '..WWWWWSSW......', '..WSSWWWWW......', '...WWWWSSW......', '...WWW.WWW......', '...SW...WS......', '..WWW...WWW.....']],
+    bat: [{ K: '#2a1740', R: '#ff9b38' }, ['K.....K..K.....K', 'KK...KKKKKK...KK', 'KKK.KKRKKRKK.KKK', '.KKKKKKKKKKKKKK.', '..KKKKKKKKKKKK..', '....KK.KK.KK....']],
+    spider: [{ K: '#2a1740', R: '#ff9b38' }, ['K..K....K..K', '.K..KKKK..K.', '..KKKRRKKK..', 'KKKKKKKKKKKK', '..KKKKKKKK..', '.K..KKKK..K.', 'K..K....K..K']]
+  };
+  const draw = name => sprite(ART[name][1], ART[name][0]);
+
+  // ---- the zombie who keeps the time
+  document.querySelector('.timer-content').insertAdjacentHTML('afterbegin', `<span class="timekeeper">${draw('zombie')}</span>`);
+
+  // ---- a character crosses the header at each new event: each of the four once before any comes again
+  const CAST = ['ghost', 'witch', 'zombie', 'mummy'];
+  const runner = document.createElement('div'); runner.className = 'runner'; root.append(runner);
+  let bag = [], last = '', busy = false;
+  function parade() {
+    if (busy || quiet() || racing() || set().header === false) return;                 // never during a race: the header belongs to the clock then
+    if (!bag.length) { bag = CAST.slice().sort(() => Math.random() - .5); if (bag[bag.length - 1] === last) bag.reverse(); }
+    last = bag.pop(); busy = true;
+    runner.className = 'runner ' + last; runner.innerHTML = draw(last); void runner.offsetWidth; runner.classList.add('running');
+    setTimeout(() => { runner.classList.remove('running'); busy = false; }, 6200);
+  }
+
+  // ---- bats, when an event is over: a flock across the strip under the header
+  function bats() {
+    if (quiet() || racing() || set().header === false) return;
+    for (let i = 0; i < 7; i++) {
+      const b = document.createElement('div'); b.className = 'bat'; b.innerHTML = draw('bat');
+      b.style.top = 100 + Math.random() * 150 + 'px'; b.style.setProperty('--size', 34 + Math.random() * 30 + 'px'); b.style.animationDelay = `${i * .22}s, 0s`;
+      root.append(b); setTimeout(() => b.remove(), 6500);
+    }
+  }
+
+  // ---- the spider's web, spun in the corner under the gravestones when a heat is done
+  const SPOKES = [0, 14, 30, 45, 60, 76, 90].map(d => d * Math.PI / 180), at = (a, r) => `${(Math.cos(a) * r).toFixed(0)} ${(Math.sin(a) * r).toFixed(0)}`;
+  const strands = SPOKES.map(a => `<line class="strand" x1="0" y1="0" x2="${at(a, 420).split(' ')[0]}" y2="${at(a, 420).split(' ')[1]}"/>`).join('');
+  const rings = [80, 150, 220, 290, 360].map(r => `<path class="strand" d="M${at(SPOKES[0], r)} ` + SPOKES.slice(1).map((a, i) => `Q${at((a + SPOKES[i]) / 2, r * .9)} ${at(a, r)}`).join(' ') + '"/>').join('');
+  const web = document.createElement('div'); web.className = 'web';
+  web.innerHTML = `<svg viewBox="0 0 400 400">${strands}${rings}</svg><div class="spider"><i></i>${draw('spider')}</div>`;
+  root.append(web);
+  const spin = () => { if (set().header === false) return; web.classList.remove('spun'); void web.offsetWidth; web.classList.add('spun'); clearTimeout(spin.t); spin.t = setTimeout(sweep, 12000); };
+  const sweep = () => { clearTimeout(spin.t); web.classList.remove('spun'); };
+
+  // ---- the coffin's lid slides shut and open again when the event changes
+  const creak = () => { const box = document.getElementById('nameBox'); box.classList.remove('creak'); void box.offsetWidth; box.classList.add('creak'); setTimeout(() => box.classList.remove('creak'), 1400); };
+
+  Lanecast.on('event.change', () => { creak(); setTimeout(parade, 600); });
+  Lanecast.on('heat.lineup', sweep);
+  Lanecast.on('race.start', () => { sweep(); runner.classList.remove('running'); });      // the race is on: the header is the clock's
+  Lanecast.on('heat.finish', spin);
+  Lanecast.on('event.finish', () => setTimeout(bats, 1500));
+  Lanecast.on('control', m => { if (!m) return; if (m.action === 'character') parade(); if (m.action === 'bats') bats(); if (m.action === 'web') spin(); });
+})();
+</script>
+</body>
+</html>

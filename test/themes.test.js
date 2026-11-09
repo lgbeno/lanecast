@@ -55,3 +55,23 @@ test('the blank requirements form asks about everything Lanecast tells a theme',
     const form = read('template', 'REQUIREMENTS.md');
     for (const name of ['event.change', 'heat.lineup', 'race.start', 'lane.split', 'lane.finish', 'heat.finish', 'event.finish', 'race.reset']) assert(form.includes('`' + name), `the form has a row for ${name}`);
 });
+
+test('the Jaguars theme matches a school by an assigned code or an exact name, and never by resemblance', () => {
+    const sandbox = { window: {} };
+    new Function('window', read('jaguars', 'teams.js'))(sandbox.window);
+    const { match, teams } = sandbox.window.JaguarTeams;
+    assert.equal(teams.length, 13);
+    for (const t of teams) assert(/^#[0-9a-f]{6}$/.test(t.primary) && /^#[0-9a-f]{6}$/.test(t.secondary) && t.name && t.id, `${t.id} has a name and two colours`);
+    assert.equal(match('Ashwaubenon').id, 'ashwaubenon');
+    assert.equal(match('  ashwaubenon ').id, 'ashwaubenon', 'case and spaces are ignored');
+    assert.equal(match('Witt-Birn').id, 'wittenberg', 'a listed spelling matches');
+    assert.equal(match('Notre Dame/N.E.W').id, 'notre-dame');
+    assert.equal(match('ASHW'), null, 'a code nobody assigned matches nothing');
+    assert.equal(match('ASHW', { ASHW: 'ashwaubenon' }).id, 'ashwaubenon', 'an assigned code matches');
+    assert.equal(match('ashw', { ASHW: 'ashwaubenon' }).id, 'ashwaubenon');
+    assert.equal(match('PUL', { PUL: 'pulaski', ASHW: 'ashwaubenon' }).id, 'pulaski');
+    assert.equal(match('Ashwaubenon East'), null, 'a name that only resembles a school matches nothing');
+    assert.equal(match('Two'), null);
+    assert.equal(match(''), null);
+    assert.equal(match('XXXX', { XXXX: 'no-such-school' }), null, 'a code assigned to a school that is not in the table matches nothing');
+});

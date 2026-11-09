@@ -30,6 +30,7 @@
  *   row       (rowElement, n) => …                          called when a row is built: add art to it
  *   lane      (rowElement, lane) => …                       called when who is in a lane changes: lane is the state's lane
  *   fragments ['#colour', …]                                what a marker bursts into
+ *   meetInName false                                        do not put the meet's name where the event's name goes when an event has none
  *   buttons   [{ label, action }]                           extra buttons for the control panel; a press arrives as
  *                                                           Lanecast.on('control', m => m.action === …)
  *
@@ -46,7 +47,7 @@
     const el = (tag, cls, html) => { const e = document.createElement(tag); if (cls) e.className = cls; if (html != null) e.innerHTML = html; return e; };
     const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
 
-    const opt = { labels: { event: 'Event', heat: 'Heat', clock: 'Time' }, marker: n => String(n), place: n => Lanecast.ordinal(n), row: null, lane: null, fragments: ['#ffffff', '#cfd8e3'], buttons: [] };
+    const opt = { labels: { event: 'Event', heat: 'Heat', clock: 'Time' }, marker: n => String(n), place: n => Lanecast.ordinal(n), row: null, lane: null, fragments: ['#ffffff', '#cfd8e3'], buttons: [], meetInName: true };
     const api = { root: null, settings: { ...DEFAULTS }, row: n => rows[n] && rows[n].box };
     let rows = {}, built = '', head = null, started = false;
 
@@ -175,7 +176,7 @@
         const set = api.settings, on = !!(s && s.event != null);
         api.root.classList.toggle('off', !on && !wasOn);
         show(head.event, on); show(head.heat, on);
-        const title = on ? (s.title || set.meet || '') : '';
+        const title = on ? (s.title || (opt.meetInName && set.meet) || '') : '';
         show(head.name, on && !!title);
         show(head.timer, on && set.clock && s.phase === 'racing');
         if (on) {
@@ -220,10 +221,10 @@
         // A new heat: every marker comes back, and the ones for lanes nobody is in burst again
         Lanecast.on('heat.lineup', () => { for (const n of Object.keys(rows)) { const r = rows[n]; clearTimeout(r._burst); r.there = true; r.marker.classList.remove('brick-explode', 'gone'); } draw(Lanecast.state); });
         window.addEventListener('resize', scale);
-        // The control panel asks which extra buttons this theme has; tell it now too, in case it is already there
+        // The control panel asks which extra buttons this theme has; tell it when this page is up too, in case it is already there
         const tell = () => Lanecast.send({ buttons: opt.buttons });
         Lanecast.on('control', m => { if (m && m.ask === 'buttons') tell(); });
-        tell();
+        Lanecast.on('hello', tell);
         return api;
     };
     window.Scoreboard = api;

@@ -1,0 +1,109 @@
+/* Arcade: an 8-bit game. Bevelled blocks with hard black edges, type with a black outline, four loud colours.
+ * Sizes in the lanes are in em (see scoreboard.css); in the header they are in px on the 1920 x 1080 canvas. */
+:root {
+  --font: ui-monospace, "SF Mono", Menlo, Consolas, "Courier New", monospace;
+  --red: #e52521; --red-dark: #b01815;
+  --blue: #049cd8; --blue-dark: #025a7a;
+  --yellow: #fbd000; --yellow-dark: #c49800; --orange: #ff8800;
+  --green: #43b047; --green-dark: #1e6622;
+  --brick: #c84c0c;
+  --night: #10122b;
+  --outline: 2px 2px 0 #000, -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000;
+  --outline-big: 3px 3px 0 #000, -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000;
+  --bevel: inset 0 -4px 0 rgba(0, 0, 0, .3), inset 4px 4px 0 rgba(255, 255, 255, .3), 0 4px 8px rgba(0, 0, 0, .5);
+  --from: 100%;                       /* which side the boards come in from */
+}
+#sb.left { --from: -100%; }
+#sb { font-family: var(--font); font-weight: 800; color: #fff; }
+
+/* ---- header: two yellow blocks, a lit marquee, the clock ---- */
+.header-box.fixed .header-content { background: linear-gradient(180deg, var(--yellow), var(--orange) 55%, var(--yellow-dark)); border: 4px solid #000; border-radius: 8px; box-shadow: var(--bevel); }
+.label { font-size: 15px; color: #000; text-shadow: 1px 1px 0 rgba(255, 255, 255, .5); margin-right: 8px; }
+.value { font-size: 34px; text-shadow: var(--outline); }
+/* The marquee: a night-blue sign with a row of bulbs along its top and bottom, chasing */
+#nameBox .header-content { background:
+    radial-gradient(circle, var(--yellow) 0 3px, transparent 4px) 0 4px / 24px 8px repeat-x,
+    radial-gradient(circle, var(--yellow) 0 3px, transparent 4px) 12px calc(100% - 4px) / 24px 8px repeat-x,
+    linear-gradient(180deg, #1b1f4a, var(--night));
+  border: 4px solid #000; border-radius: 8px; box-shadow: inset 0 0 0 3px var(--red), 0 4px 8px rgba(0, 0, 0, .5); padding: 0 26px; }
+#nameBox .header-content.visible { animation: blockDrop .5s cubic-bezier(.34, 1.56, .64, 1) .2s both, bulbs 1s steps(2) infinite; }
+@keyframes bulbs { 0% { background-position: 0 4px, 12px calc(100% - 4px), 0 0; } 100% { background-position: 24px 4px, -12px calc(100% - 4px), 0 0; } }
+.event-name { font-size: 30px; color: var(--yellow); text-shadow: var(--outline); }
+.header-content.visible { animation: blockDrop .5s cubic-bezier(.34, 1.56, .64, 1) both; }
+.header-content.hiding { animation: blockRise .3s ease-in both; }
+#heatBox .header-content.visible { animation-delay: .1s; }
+.header-content.exploding { animation: pop .3s ease-out both; }
+.header-content.appearing { animation: unpop .3s ease-out both; }
+@keyframes blockDrop { 0% { transform: translateY(-100%); opacity: 0; } 60% { transform: translateY(10%); opacity: 1; } 100% { transform: none; opacity: 1; } }
+@keyframes blockRise { from { transform: none; opacity: 1; } to { transform: translateY(-100%); opacity: 0; } }
+@keyframes pop { from { transform: scale(1); opacity: 1; } to { transform: scale(0); opacity: 0; } }
+@keyframes unpop { from { transform: translateY(-30px) scale(.5); opacity: 0; } to { transform: none; opacity: 1; } }
+
+/* ---- clock: a red block with a stopwatch ---- */
+.timer-content { background: linear-gradient(180deg, var(--red), #c41e1a 50%, var(--red-dark)); border: 4px solid var(--yellow); border-radius: 8px; box-shadow: inset 0 -4px 0 rgba(0, 0, 0, .3), 0 4px 8px rgba(0, 0, 0, .5), 0 0 20px rgba(255, 215, 0, .3); padding: 0 14px; }
+.timer-content.visible { animation: powerUp .45s cubic-bezier(.34, 1.56, .64, 1) both; }
+.timer-content.hiding { animation: powerDown .3s ease-in both; }
+@keyframes powerUp { 0% { transform: scale(0); opacity: 0; } 60% { transform: scale(1.15); opacity: 1; } 100% { transform: none; opacity: 1; } }
+@keyframes powerDown { from { transform: none; opacity: 1; } to { transform: scale(0); opacity: 0; } }
+.timer-label { display: none; }
+.running-time { font-size: 40px; color: var(--yellow); text-shadow: var(--outline-big); letter-spacing: 1px; }
+.stopwatch { position: relative; width: 38px; height: 38px; margin-right: 12px; border-radius: 50%; background: #fff; border: 4px solid #000; box-shadow: inset -3px -3px 0 rgba(0, 0, 0, .18); flex-shrink: 0; }
+.stopwatch::before { content: ""; position: absolute; left: 50%; top: -11px; width: 10px; height: 6px; margin-left: -5px; background: var(--yellow); border: 3px solid #000; border-bottom: 0; }
+.stopwatch i { position: absolute; left: 50%; bottom: 50%; width: 4px; height: 13px; margin-left: -2px; background: var(--red); transform-origin: 50% 100%; }
+.timer-content.visible .stopwatch i { animation: tick 1s steps(8) infinite; }
+@keyframes tick { to { transform: rotate(360deg); } }
+
+/* ---- lanes ---- */
+.lane-content, .lineup-content { border: .25em solid var(--yellow); border-radius: .5em; box-shadow: inset 0 -.25em 0 rgba(0, 0, 0, .3), 0 .25em .5em rgba(0, 0, 0, .5), 0 0 1.25em rgba(255, 215, 0, .3); }
+.lineup-content { background: linear-gradient(180deg, var(--blue), #037ba8 50%, var(--blue-dark)); }
+.lane-content { background: linear-gradient(180deg, var(--red), #c41e1a 50%, var(--red-dark)); }
+.lane-content.visible, .lineup-content.visible { animation: slideIn .5s cubic-bezier(.34, 1.4, .64, 1) both; }
+.lane-content.hiding { animation: slideOut .3s ease-in both; }
+.lineup-content.hiding { animation: blink .2s steps(2) both; }
+@keyframes slideIn { from { transform: translateX(var(--from)); opacity: 0; } to { transform: none; opacity: 1; } }
+@keyframes slideOut { from { transform: none; opacity: 1; } to { transform: translateX(var(--from)); opacity: 0; } }
+@keyframes blink { from { transform: none; opacity: 1; } to { transform: none; opacity: 0; } }
+.lineup-name, .swimmer-name { font-size: 1.7em; text-shadow: var(--outline); letter-spacing: 0; }
+.lineup-team { font-size: 1.35em; color: var(--yellow); text-shadow: var(--outline); letter-spacing: 0; }
+.place-indicator { font-size: 2.1em; color: var(--yellow); text-shadow: var(--outline-big); min-width: 2.2em; }
+.lane-content.visible .place-indicator { animation: bounce .5s ease-out .45s; }
+@keyframes bounce { 0%, 100% { transform: none; } 50% { transform: translateY(-.35em); } }
+.final-time, .split-time { font-size: 2.3em; color: var(--yellow); text-shadow: var(--outline-big); }
+/* First: the high score. Gold, and it flashes */
+.lane-content.first-place { background: linear-gradient(180deg, var(--yellow), var(--yellow-dark) 50%, var(--orange)); border-color: #fff; }
+.lane-content.first-place.visible { animation: slideIn .5s cubic-bezier(.34, 1.4, .64, 1) both, highScore .3s ease-in-out .5s infinite alternate; }
+@keyframes highScore { from { box-shadow: inset 0 -.25em 0 rgba(0, 0, 0, .3), 0 .25em .5em rgba(0, 0, 0, .5), 0 0 1.9em rgba(255, 215, 0, .8); filter: brightness(1); }
+  to { box-shadow: inset 0 -.25em 0 rgba(0, 0, 0, .3), 0 .25em .5em rgba(0, 0, 0, .5), 0 0 3.1em rgba(255, 255, 255, 1); filter: brightness(1.15); } }
+.lane-content.first-place .swimmer-name { color: #000; text-shadow: 2px 2px 0 #fff, -1px -1px 0 #fff, 1px -1px 0 #fff, -1px 1px 0 #fff; }
+.lane-content.first-place :is(.final-time, .place-indicator) { color: #fff; text-shadow: 3px 3px 0 #c41e1a, -1px -1px 0 #c41e1a, 1px -1px 0 #c41e1a, -1px 1px 0 #c41e1a; }
+.lane-content.first-place.visible .place-indicator { animation: bounce .5s ease-out infinite; }
+.lane-content.second-place { background: linear-gradient(180deg, var(--blue), #037ba8 50%, var(--blue-dark)); }
+.lane-content.third-place { background: linear-gradient(180deg, var(--green), #2d8032 50%, var(--green-dark)); }
+/* The lane's block */
+.lane-indicator { font-size: 2em; width: 1.5625em; height: 1.5625em; right: .625em; background: linear-gradient(180deg, var(--yellow), var(--orange) 50%, var(--yellow-dark)); border: .125em solid #000; border-radius: .25em; box-shadow: var(--bevel); text-shadow: var(--outline-big); }
+#sb.left .lane-indicator { left: .625em; }
+/* A split: a green block drops in */
+.split-content { background: linear-gradient(180deg, var(--green), #2d8032 50%, var(--green-dark)); border: .25em solid #000; border-radius: .5em; box-shadow: var(--bevel); }
+.split-content.visible { animation: blockIn .4s cubic-bezier(.34, 1.56, .64, 1) both; }
+.split-content.hiding { animation: blockOut .3s ease-in both; }
+@keyframes blockIn { 0% { transform: translateY(-100%) scale(.5); opacity: 0; } 60% { transform: translateY(10%) scale(1.1); opacity: 1; } 100% { transform: none; opacity: 1; } }
+@keyframes blockOut { from { transform: none; opacity: 1; } to { transform: translateY(-100%) scale(.5); opacity: 0; } }
+.split-time { color: #fff; }
+/* A coin out of the block for every finisher */
+.coin { position: absolute; left: 50%; top: -.6em; width: .7em; height: .7em; margin-left: -.35em; border-radius: 50%; background: radial-gradient(circle at 35% 35%, #fff6b0, var(--yellow) 45%, var(--yellow-dark)); border: .09em solid #000; animation: coin .85s ease-out forwards; pointer-events: none; }
+@keyframes coin { 0% { transform: translateY(0) scaleX(1); opacity: 1; } 25% { transform: translateY(-1.5em) scaleX(.15); } 50% { transform: translateY(-2.1em) scaleX(1); opacity: 1; } 75% { transform: translateY(-1.6em) scaleX(.15); opacity: 1; } 100% { transform: translateY(-.6em) scaleX(1); opacity: 0; } }
+
+/* ---- under the header: the callout, and the duck ---- */
+.callout { position: absolute; left: 0; right: 0; top: 108px; text-align: center; font-size: 46px; color: var(--yellow); text-shadow: 4px 4px 0 #000, -2px -2px 0 #000, 2px -2px 0 #000, -2px 2px 0 #000; letter-spacing: 2px; opacity: 0; pointer-events: none; }
+.callout.show { animation: shout .5s steps(4) both, flash .4s steps(2) .5s infinite; }
+@keyframes shout { from { transform: scale(.2); opacity: 0; } to { transform: none; opacity: 1; } }
+@keyframes flash { from { color: var(--yellow); } to { color: #fff; } }
+.duck { position: absolute; left: -90px; top: 96px; width: 72px; height: 63px; opacity: 0; pointer-events: none; }
+.duck svg { width: 100%; height: 100%; display: block; }
+.duck.go { opacity: 1; animation: waddle 6s linear forwards, bob .3s steps(2) infinite; }
+.duck .step2 { visibility: hidden; }
+.duck.go .step1 { animation: step .3s steps(1) infinite; }
+.duck.go .step2 { animation: step .3s steps(1) infinite reverse; visibility: visible; }
+@keyframes step { 0% { opacity: 1; } 50% { opacity: 0; } 100% { opacity: 0; } }
+@keyframes waddle { from { left: -90px; } to { left: 1940px; } }
+@keyframes bob { from { margin-top: 0; } to { margin-top: -4px; } }

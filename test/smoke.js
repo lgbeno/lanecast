@@ -241,7 +241,7 @@ app.on('browser-window-created', (event, win) => {
         // Themes: switch to the template (which has a control panel) and back.
         await js(`document.getElementById('tab-theme').click()`); await wait(300);
         const cards = await js(`[...document.querySelectorAll('#themeList .theme-item strong')].map(n => n.textContent)`);
-        check(['Classic', 'Clean', 'Template'].every(n => cards.includes(n)), 'the built-in themes are listed: ' + cards.join(', '));
+        check(['Classic', 'Clean', 'Arcade', 'Jaguars', 'Spooky Splash', 'Template'].every(n => cards.includes(n)), 'the built-in themes are listed: ' + cards.join(', '));
         const useTheme = name => js(`[...document.querySelectorAll('#themeList .theme-item')].find(c => c.querySelector('strong').textContent === ${JSON.stringify(name)}).querySelector('.use').click()`);
         await useTheme('Template'); await wait(2500);
         await js(`document.getElementById('tab-stream').click()`); await wait(1200);
@@ -271,12 +271,15 @@ app.on('browser-window-created', (event, win) => {
         check(hidden.drawer && hidden.width > before && hidden.label === 'Theme controls', `drawer hidden, stage grows from ${Math.round(before)} to ${Math.round(hidden.width)}px`);
         await click('drawerToggle', 500);
         check(await js(`!document.getElementById('drawer').hidden`), 'drawer shown again');
-        // A scoreboard theme: its engine, stylesheets and control panel all load inside the app's strict frames, and it draws the race on the lanes.
-        await js(`document.getElementById('tab-theme').click()`); await useTheme('Clean'); await wait(1500); await js(`document.getElementById('tab-stream').click()`); await wait(1500);
-        const board = frame('overlay') ? await frame('overlay').executeJavaScript(`({ url: location.href, rows: document.querySelectorAll('.lane-box').length, scaled: Math.abs(new DOMMatrix(getComputedStyle(document.getElementById('sb')).transform).a - innerWidth / 1920) < .001 && innerWidth > 0, placed: getComputedStyle(document.querySelector('.lanes-container')).position, styled: getComputedStyle(document.querySelector('.lane-content')).backgroundColor, header: document.querySelector('#eventBox .value').textContent })`).catch(e => ({ error: String(e) })) : { error: 'no overlay frame' };
-        const boardStatus = await js(`${text('themeStatus')}`);
-        check(/^Clean · overlay ready · control panel ready$/.test(boardStatus) && String(board.url).startsWith('theme://b-clean/') && board.rows === 8 && board.scaled && board.placed === 'absolute' && /rgba?\(8, 12, 18/.test(board.styled) && /^\d+$/.test(board.header),
-            `the Clean theme draws its scoreboard in the app: ${boardStatus}, ${JSON.stringify(board)}`);
+        // The scoreboard themes: the shared engine, each theme's own stylesheet and its control panel all load inside the app's strict frames, and each draws the race on the lanes.
+        for (const [name, id, panel] of [['Clean', 'b-clean', /rgba?\(8, 12, 18/], ['Arcade', 'b-arcade', /gradient/], ['Jaguars', 'b-jaguars', /gradient/], ['Spooky Splash', 'b-spooky', /gradient/]]) {
+            await js(`document.getElementById('tab-theme').click()`); await useTheme(name); await wait(1500); await js(`document.getElementById('tab-stream').click()`); await wait(1500);
+            const board = frame('overlay') ? await frame('overlay').executeJavaScript(`({ url: location.href, rows: document.querySelectorAll('.lane-box').length, scaled: Math.abs(new DOMMatrix(getComputedStyle(document.getElementById('sb')).transform).a - innerWidth / 1920) < .001 && innerWidth > 0, placed: getComputedStyle(document.querySelector('.lanes-container')).position, styled: getComputedStyle(document.querySelector('.lane-content')).backgroundColor + getComputedStyle(document.querySelector('.lane-content')).backgroundImage, header: document.querySelector('#eventBox .value').textContent })`).catch(e => ({ error: String(e) })) : { error: 'no overlay frame' };
+            const boardStatus = await js(`${text('themeStatus')}`);
+            const buttons = frame('control') ? await frame('control').executeJavaScript(`[...document.querySelectorAll('button')].map(b => b.textContent).join('|')`).catch(() => '') : '';
+            check(boardStatus === `${name} · overlay ready · control panel ready` && String(board.url).startsWith(`theme://${id}/`) && board.rows === 8 && board.scaled && board.placed === 'absolute' && panel.test(board.styled) && /^\d+$/.test(board.header) && /^Header\|Lane boards\|Clock\|/.test(buttons) && /Line up the lanes…$/.test(buttons),
+                `the ${name} theme draws its scoreboard in the app: ${boardStatus}; event ${board.header}, ${board.rows} rows; buttons ${buttons}${board.error ? '; ' + board.error : ''}`);
+        }
         await js(`document.getElementById('tab-theme').click()`); await useTheme('Classic'); await wait(2000);
         const back = await js(`({ status: ${text('themeStatus')}, drawer: document.getElementById('drawer').hidden, toggle: document.getElementById('drawerToggle').hidden })`);
         check(/^Classic · overlay ready$/.test(back.status) && back.drawer && back.toggle, `back to Classic, drawer and its toggle gone: ${back.status}`);

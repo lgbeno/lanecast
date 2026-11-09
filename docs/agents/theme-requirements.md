@@ -4,7 +4,14 @@ A theme goes wrong long before any code is written: when "a Halloween theme" is 
 
 **The form:** [`themes/template/REQUIREMENTS.md`](../../themes/template/REQUIREMENTS.md). A copy lands in every theme started with **Theme tab → New theme…**.
 
-**Filled in:** [Clean](../../themes/clean/REQUIREMENTS.md), a plain scoreboard. Read it before filling in your own.
+**Filled in, four times.** Read one before filling in your own:
+
+| Theme | Its requirements show |
+| --- | --- |
+| [Clean](../../themes/clean/REQUIREMENTS.md) | The shortest. A plain scoreboard; every row of the moments table answered |
+| [Spooky Splash](../../themes/spooky/REQUIREMENTS.md) | A club's own written brief turned into the form: characters and effects with rules about where they may go, and a list of what was asked for but not built |
+| [Jaguars](../../themes/jaguars/REQUIREMENTS.md) | Teams: thirteen schools with colours and spellings, and what happens to a team that is not in the table |
+| [Arcade](../../themes/arcade/REQUIREMENTS.md) | A look borrowed from somewhere, and the line it must not cross |
 
 ## When to use it
 
@@ -51,7 +58,7 @@ Then map the form onto the build, section by section:
 
 ## The scoreboard themes
 
-`themes/clean` and the themes made from it share four files, byte for byte: `scoreboard.js` (builds the header and a row per lane and keeps them in step with the race), `scoreboard.css` (where everything sits), `control.html` and `settings.html` (show and hide; the number of lanes and where they are in the picture). A theme of this kind is those four files unchanged, plus:
+`themes/clean` and the themes made from it (`arcade`, `jaguars`, `spooky`) share four files, byte for byte: `scoreboard.js` (builds the header and a row per lane and keeps them in step with the race), `scoreboard.css` (where everything sits), `control.html` and `settings.html` (show and hide; the number of lanes and where they are in the picture). A theme of this kind is those four files unchanged, plus:
 
 - `theme.css`: every colour, font and animation. The classes it may style are listed at the top of [`scoreboard.js`](../../themes/clean/scoreboard.js). Each piece is hidden until it is given `.visible`, and has `.hiding` while it leaves: the theme writes the two animations.
 - `overlay.html`: loads the files and calls `Scoreboard.start({ … })`, with the theme's own lane markers, wording for places, and buttons. Characters and effects go here, driven by `Lanecast.on(…)`.

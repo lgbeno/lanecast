@@ -1,0 +1,68 @@
+<!doctype html>
+<!--
+  The settings of a "scoreboard on the lanes" theme: how many lanes the pool has and where they are in the picture.
+  Every change is saved as it is made (Lanecast.saveSettings), so the boards move on the picture while you drag.
+  The same file in every theme that uses scoreboard.js.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Scoreboard — settings</title>
+<style>
+html, body { margin: 0; background: #121d29; font: 14px system-ui, sans-serif; color: #edf4fb; }
+body { padding: 18px 20px 24px; }
+h2 { font-size: 10px; letter-spacing: 2px; color: #9aaec2; font-weight: 750; margin: 20px 0 8px; }
+h2:first-child { margin-top: 0; }
+.row { display: flex; gap: 12px; align-items: center; margin: 10px 0; }
+label { font-size: 13px; color: #9aaec2; width: 150px; flex-shrink: 0; }
+input[type=text], select { flex: 1; background: #0c1620; color: #edf4fb; border: 1px solid #3a4f63; border-radius: 6px; padding: 8px 10px; font: inherit; min-width: 0; }
+input[type=range] { flex: 1; min-width: 0; accent-color: #74e5c1; }
+output { width: 44px; text-align: right; font-variant-numeric: tabular-nums; color: #9aaec2; }
+.pick { display: flex; gap: 6px; flex: 1; }
+.pick button { flex: 1; }
+button { background: #1e3041; border: 1px solid #3c5266; border-radius: 6px; color: #f4f8fc; font: 600 13px system-ui; padding: 9px 12px; cursor: pointer; }
+button[aria-pressed=true] { background: #74e5c1; color: #10261f; border-color: #74e5c1; }
+.primary { background: #74e5c1; color: #10261f; border-color: #74e5c1; }
+.foot { display: flex; gap: 10px; justify-content: flex-end; margin-top: 22px; }
+.note { font-size: 12px; color: #9aaec2; margin: 6px 0 0; line-height: 1.45; }
+</style>
+</head>
+<body>
+<h2>THE POOL</h2>
+<div class="row"><label for="lanes">Lanes</label><select id="lanes"><option>4</option><option>5</option><option>6</option><option>7</option><option>8</option><option>9</option><option>10</option></select></div>
+<div class="row"><label>Lane 1 is at the</label><span class="pick" id="laneOne"><button type="button" data-v="bottom">Bottom</button><button type="button" data-v="top">Top</button></span></div>
+<div class="row"><label>Boards are on the</label><span class="pick" id="side"><button type="button" data-v="left">Left</button><button type="button" data-v="right">Right</button></span></div>
+<h2>WHERE THE LANES ARE IN THE PICTURE</h2>
+<div class="row"><label for="top">Top lane starts at</label><input type="range" id="top" min="0" max="90" step="1"><output id="topOut"></output></div>
+<div class="row"><label for="bottom">Bottom lane ends at</label><input type="range" id="bottom" min="10" max="100" step="1"><output id="bottomOut"></output></div>
+<p class="note">Drag until each board sits on its own lane. The boards move on the picture as you drag.</p>
+<h2>THE MEET</h2>
+<div class="row"><label for="meet">Meet name</label><input type="text" id="meet" placeholder="Shown when an event has no name"></div>
+<div class="foot"><button id="done" type="button" class="primary">Done</button></div>
+
+<script src="../lanecast-theme.js"></script>
+<script>
+(() => {
+  const $ = id => document.getElementById(id);
+  const DEFAULTS = { lanes: 8, laneOne: 'bottom', side: 'right', top: 41, bottom: 100, meet: '' };
+  let now = { ...DEFAULTS }, typing = false;
+  const fill = () => {
+    $('lanes').value = String(now.lanes);
+    for (const id of ['laneOne', 'side']) for (const b of $(id).children) b.setAttribute('aria-pressed', String(b.dataset.v === now[id]));
+    $('top').value = now.top; $('bottom').value = now.bottom; $('topOut').textContent = now.top + '%'; $('bottomOut').textContent = now.bottom + '%';
+    if (!typing) $('meet').value = now.meet || '';
+  };
+  const save = change => { now = { ...now, ...change }; fill(); Lanecast.saveSettings(change); };
+  Lanecast.on('settings', s => { now = { ...now, ...s }; fill(); });
+  $('lanes').onchange = () => save({ lanes: Number($('lanes').value) });
+  for (const id of ['laneOne', 'side']) for (const b of $(id).children) b.onclick = () => save({ [id]: b.dataset.v });
+  // The two ends cannot cross: there is always a tenth of the picture between them
+  $('top').oninput = () => { const top = Number($('top').value); save({ top, bottom: Math.max(now.bottom, Math.min(100, top + 10)) }); };
+  $('bottom').oninput = () => { const bottom = Number($('bottom').value); save({ bottom, top: Math.min(now.top, Math.max(0, bottom - 10)) }); };
+  $('meet').oninput = () => { typing = true; save({ meet: $('meet').value.trim() }); };
+  $('done').onclick = () => Lanecast.closeDialog();
+  fill();
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,63 @@
+<!doctype html>
+<!--
+  The control panel of a "scoreboard on the lanes" theme: what is showing, the theme's own buttons, and its settings.
+  The same file in every theme that uses scoreboard.js; a theme adds buttons of its own by naming them in
+  Scoreboard.start({ buttons: [{ label, action }] }), and gets a press as Lanecast.on('control', m => m.action === …).
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Scoreboard — control panel</title>
+<style>
+html, body { margin: 0; background: transparent; font: 13px system-ui, sans-serif; color: #edf4fb; }
+body { padding: 14px 14px 20px; }
+h2 { font-size: 10px; letter-spacing: 2px; color: #9aaec2; font-weight: 750; margin: 18px 0 8px; }
+h2:first-child { margin-top: 0; }
+h2[hidden] { display: none; }
+.stack { display: grid; gap: 8px; }
+button { background: #1e3041; border: 1px solid #3c5266; border-radius: 8px; color: #f4f8fc; font: 600 14px system-ui; padding: 12px 14px; cursor: pointer; text-align: left; width: 100%; }
+button[aria-pressed="true"] { background: #ffcc33; border-color: #ffcc33; color: #111; }
+.now { font-size: 12px; color: #9aaec2; margin: 6px 0 0; }
+.now b { color: #edf4fb; }
+</style>
+</head>
+<body>
+<h2>SHOWING</h2>
+<div class="stack">
+  <button id="header" aria-pressed="true">Header</button>
+  <button id="board" aria-pressed="true">Lane boards</button>
+  <button id="clock" aria-pressed="true">Clock</button>
+</div>
+<h2 id="extrasTitle" hidden>THIS THEME</h2>
+<div class="stack" id="extras"></div>
+<h2>YOUR POOL</h2>
+<div class="stack">
+  <button id="settings">Line up the lanes…</button>
+</div>
+<h2>NOW</h2>
+<p class="now" id="now">Waiting for the scoreboard…</p>
+
+<script src="../lanecast-theme.js"></script>
+<script>
+(() => {
+  const $ = id => document.getElementById(id);
+  // What is showing is a saved setting, so it is still as you left it next time
+  for (const id of ['header', 'board', 'clock']) $(id).onclick = () => Lanecast.saveSettings({ [id]: $(id).getAttribute('aria-pressed') !== 'true' });
+  Lanecast.on('settings', s => { for (const id of ['header', 'board', 'clock']) $(id).setAttribute('aria-pressed', String(s[id] !== false)); });
+  $('settings').onclick = () => Lanecast.dialog('settings.html', { title: 'Line up the lanes', width: 520, height: 560 });
+  // The overlay says which buttons of its own the theme has
+  Lanecast.on('overlay', m => {
+    if (!m || !Array.isArray(m.buttons)) return;
+    told = true;
+    $('extrasTitle').hidden = !m.buttons.length;
+    $('extras').replaceChildren(...m.buttons.map(b => { const e = document.createElement('button'); e.textContent = b.label; e.onclick = () => Lanecast.send({ action: b.action }); return e; }));
+  });
+  // Ask once the app has said hello (before that, an answer could not reach this page), and again with the first scoreboard if none came
+  let told = false;
+  const ask = () => { if (!told) Lanecast.send({ ask: 'buttons' }); };
+  Lanecast.on('hello', ask);
+  Lanecast.on('state', s => { ask(); $('now').innerHTML = s.event ? `Event <b>${s.event}</b> heat <b>${s.heat}</b> · ${s.phase} · <b>${s.clock || '0:00.0'}</b>` : 'No event on the board'; });
+})();
+</script>
+</body>
+</html>
