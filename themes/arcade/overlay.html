@@ -1,0 +1,74 @@
+<!doctype html>
+<!--
+  Arcade — a Lanecast theme. The scoreboard on the lanes, as an 8-bit game.
+
+  scoreboard.js, scoreboard.css, control.html and settings.html are the shared engine (see themes/clean); theme.css is the
+  look; this page adds what is Arcade's own: the stopwatch beside the clock, a coin for every finisher, a callout under the
+  header (GO! / HEAT CLEAR!) and the duck. All of the art is drawn here, in code; nothing is loaded from anywhere.
+  REQUIREMENTS.md says what this theme was asked to be.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Arcade — Lanecast theme</title>
+<link rel="stylesheet" href="scoreboard.css">
+<link rel="stylesheet" href="theme.css">
+</head>
+<body>
+<div id="sb"></div>
+<script src="../lanecast-theme.js"></script>
+<script src="scoreboard.js"></script>
+<script>
+(() => {
+  const board = Scoreboard.start({
+    labels: { clock: 'Time' },
+    fragments: ['#c84c0c', '#fbd000', '#7a2e06', '#ffe86b'],              // a block breaks into bricks
+    buttons: [{ label: 'Send the duck across', action: 'duck' }]
+  });
+  const root = board.root, settings = () => Scoreboard.settings;
+
+  // ---- the stopwatch beside the clock: its hand goes round once a second while the clock is up (decoration: the time is the console's)
+  document.querySelector('.timer-content').insertAdjacentHTML('afterbegin', '<span class="stopwatch"><i></i></span>');
+
+  // ---- pixel art, from a map: one character a pixel
+  const sprite = (rows, colours) => rows.map((row, y) => [...row].map((c, x) => c === '.' ? '' : `<rect x="${x}" y="${y}" width="1.02" height="1.02" fill="${colours[c]}"/>`).join('')).join('');
+  const DUCK = { Y: '#fbd000', W: '#ffe86b', O: '#ff8800', K: '#111111' };
+  const BODY = ['................', '.........YYY....', '........YYYYY...', '........YYKYYOO.', '........YYYYYOOO', '..Y.....YYYYY...', '..YY...YYYYY....', '..YYYYYYYYYYY...', '..YYYYYWWYYYY...', '...YYYYWWWYYY...', '....YYYYYYYY....', '.....YYYYYY.....'];
+  const STEPS = [['......O...O.....', '.....OO..OO.....'], ['.......O.O......', '......OO.OO.....']];
+  const duck = document.createElement('div'); duck.className = 'duck';
+  duck.innerHTML = `<svg viewBox="0 0 16 14" shape-rendering="crispEdges">${sprite(BODY, DUCK)}${STEPS.map((legs, i) => `<g class="step${i + 1}" transform="translate(0 12)">${sprite(legs, DUCK)}</g>`).join('')}</svg>`;
+  root.append(duck);
+  let waddling = false;
+  function waddle() {
+    if (waddling || settings().header === false) return;
+    waddling = true; duck.classList.add('go');
+    setTimeout(() => { duck.classList.remove('go'); waddling = false; }, 6200);
+  }
+
+  // ---- a callout under the header: one at a time, a newer one replaces an older
+  const callout = document.createElement('div'); callout.className = 'callout'; root.append(callout);
+  function shout(text, ms) {
+    if (settings().header === false) return;
+    callout.textContent = text; callout.classList.remove('show'); void callout.offsetWidth; callout.classList.add('show');
+    clearTimeout(shout.t); shout.t = setTimeout(() => callout.classList.remove('show'), ms);
+  }
+
+  // ---- a coin out of the lane's block for every finisher
+  function coin(lane) {
+    const row = Scoreboard.row(lane); if (!row || settings().board === false) return;
+    const c = document.createElement('i'); c.className = 'coin'; row.querySelector('.lane-indicator').append(c);
+    setTimeout(() => c.remove(), 900);
+  }
+
+  Lanecast.on('event.change', waddle);
+  Lanecast.on('race.start', () => shout('GO!', 1400));
+  Lanecast.on('race.reset', () => callout.classList.remove('show'));
+  Lanecast.on('lane.finish', e => coin(e.lane));
+  Lanecast.on('heat.finish', e => shout(`HEAT ${e.heat} CLEAR!`, 3200));
+  Lanecast.on('event.finish', e => setTimeout(() => shout(`EVENT ${e.event} CLEAR!`, 3200), 3300));
+  Lanecast.on('heat.lineup', () => callout.classList.remove('show'));
+  Lanecast.on('control', m => { if (m && m.action === 'duck') waddle(); });
+})();
+</script>
+</body>
+</html>

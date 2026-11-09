@@ -1,0 +1,65 @@
+<!doctype html>
+<!--
+  Jaguars — which team code is which school. A start list names teams by short codes; this dialog lists the codes the
+  theme has seen and lets the person pick the school for each. Saved with the theme's settings as { codes: { CODE: id } }.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Jaguars — team colours</title>
+<style>
+html, body { margin: 0; background: #121d29; font: 14px system-ui, sans-serif; color: #edf4fb; }
+body { padding: 18px 20px 24px; }
+h2 { font-size: 10px; letter-spacing: 2px; color: #9aaec2; font-weight: 750; margin: 20px 0 8px; }
+h2:first-child { margin-top: 0; }
+.row { display: flex; gap: 10px; align-items: center; margin: 8px 0; }
+.code { width: 92px; flex-shrink: 0; font-weight: 700; letter-spacing: 1px; }
+.chip { width: 26px; height: 26px; border-radius: 4px; flex-shrink: 0; border: 1px solid #3a4f63; border-right-width: 6px; }
+input[type=text], select { background: #0c1620; color: #edf4fb; border: 1px solid #3a4f63; border-radius: 6px; padding: 8px 10px; font: inherit; min-width: 0; }
+select { flex: 1; } input[type=text] { width: 92px; flex-shrink: 0; text-transform: uppercase; }
+button { background: #1e3041; border: 1px solid #3c5266; border-radius: 6px; color: #f4f8fc; font: 600 13px system-ui; padding: 9px 12px; cursor: pointer; }
+.quiet { background: transparent; border-color: transparent; color: #9aaec2; padding: 9px 6px; }
+.primary { background: #74e5c1; color: #10261f; border-color: #74e5c1; }
+.foot { display: flex; gap: 10px; justify-content: flex-end; margin-top: 22px; }
+.note { font-size: 12px; color: #9aaec2; margin: 6px 0 0; line-height: 1.45; }
+</style>
+</head>
+<body>
+<h2>TEAMS IN THIS MEET</h2>
+<div id="list"></div>
+<p class="note" id="none">No teams seen yet. They appear here once a heat with start lists has been on the board; or add a code below.</p>
+<h2>ADD A CODE</h2>
+<div class="row"><input type="text" id="newCode" maxlength="12" placeholder="CODE" aria-label="Team code"><select id="newTeam" aria-label="School"></select><button id="add" type="button">Add</button></div>
+<p class="note">Type the code exactly as it shows on a lane. A team you leave unmatched keeps its code and a plain grey marker.</p>
+<div class="foot"><button id="done" type="button" class="primary">Done</button></div>
+
+<script src="../lanecast-theme.js"></script>
+<script src="teams.js"></script>
+<script>
+(() => {
+  const $ = id => document.getElementById(id);
+  let codes = {}, seen = [];
+  const options = chosen => ['<option value="">Not one of these schools</option>', ...JaguarTeams.teams.map(t => `<option value="${t.id}"${t.id === chosen ? ' selected' : ''}>${t.name}</option>`)].join('');
+  $('newTeam').innerHTML = options('');
+  function draw() {
+    const all = [...new Set([...seen, ...Object.keys(codes)])].sort();
+    $('none').hidden = all.length > 0;
+    $('list').replaceChildren(...all.map(code => {
+      const team = JaguarTeams.match(code, codes), named = !codes[code] && team;            // a full name matches by itself
+      const row = document.createElement('div'); row.className = 'row';
+      row.innerHTML = `<span class="chip"></span><span class="code"></span><select aria-label="School for this code"></select>`;
+      row.querySelector('.code').textContent = code;
+      row.querySelector('.chip').style.cssText = team ? `background:${team.primary};border-right-color:${team.secondary}` : '';
+      const select = row.querySelector('select'); select.innerHTML = options(team ? team.id : ''); select.disabled = !!named;
+      select.onchange = () => { const next = { ...codes }; if (select.value) next[code] = select.value; else delete next[code]; codes = next; Lanecast.saveSettings({ codes }); draw(); };
+      return row;
+    }));
+  }
+  Lanecast.on('settings', s => { codes = (s.codes && typeof s.codes === 'object') ? s.codes : {}; seen = Array.isArray(s.seen) ? s.seen : []; draw(); });
+  $('add').onclick = () => { const code = $('newCode').value.trim().toUpperCase(), id = $('newTeam').value; if (!code || !id) return; codes = { ...codes, [code]: id }; $('newCode').value = ''; Lanecast.saveSettings({ codes }); draw(); };
+  $('done').onclick = () => Lanecast.closeDialog();
+  draw();
+})();
+</script>
+</body>
+</html>

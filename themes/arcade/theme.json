@@ -1,0 +1,11 @@
+{
+  "name": "Arcade",
+  "version": "1.0.0",
+  "author": "Lanecast",
+  "description": "An 8-bit scoreboard on the lanes: bevelled blocks, a lit marquee for the event's name, coins for finishers, a flashing high score for the winner, and a duck that waddles across when a new event comes up. Line it up with your pool in its settings.",
+  "overlay": "overlay.html",
+  "control": {
+    "page": "control.html",
+    "width": 300
+  }
+}

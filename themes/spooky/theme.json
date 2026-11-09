@@ -1,0 +1,11 @@
+{
+  "name": "Spooky Splash",
+  "version": "1.0.0",
+  "author": "Lanecast",
+  "description": "A Halloween meet, fun rather than frightening: gravestones for the event and heat, the event's name in a coffin that slides open, a zombie keeping the time, jack-o'-lanterns numbering the lanes, a ghost, witch, zombie or mummy crossing the header at each new event, and a spider that spins a web when a heat is done. Line it up with your pool in its settings.",
+  "overlay": "overlay.html",
+  "control": {
+    "page": "control.html",
+    "width": 300
+  }
+}
