@@ -4,7 +4,7 @@ You have been asked to make, or change, what a swim meet's live stream looks lik
 
 **Contents:** [what a theme is](#what-a-theme-is) · [ask first](#ask-the-person-first) · [where the files go](#where-the-files-go) · [seeing your work](#seeing-your-work) · [build in this order](#build-in-this-order) · [the rules of the frame](#the-rules-of-the-frame) · [done means](#done-means) · [when it does not work](#when-it-does-not-work)
 
-Companions: [every message, with examples](theme-messages.md) · [working code for common things](theme-cookbook.md) · [the full reference](../themes.md)
+Companions: [writing down what is wanted](theme-requirements.md) · [every message, with examples](theme-messages.md) · [working code for common things](theme-cookbook.md) · [the full reference](../themes.md)
 
 ## What a theme is
 
@@ -44,6 +44,8 @@ A theme is built around a particular pool and club. Before writing anything, fin
 | Whether they want buttons, and for what | Decides if there is a control panel at all |
 | Sponsors, a meet name, anything that changes from meet to meet | Belongs in a settings dialog, not hard-coded |
 
+Write the answers down before building: [the requirements form](theme-requirements.md) has a place for each, and a table of every moment in a race to fill in. It is what the theme gets checked against at the end, and what the next agent reads first.
+
 If they have not set up cameras or positions yet, build the theme so it works without them (see [the cookbook](theme-cookbook.md#cut-cameras-with-the-race)), and tell them the names your theme looks for.
 
 ## Where the files go
@@ -56,7 +58,7 @@ If they have not set up cameras or positions yet, build the theme so it works wi
 | Windows | `%APPDATA%\Lanecast\themes\` |
 | Linux | `~/.config/Lanecast/themes/` |
 
-The easy way to start: the person presses **Theme tab → New theme…** and types a name. That copies the template into a new folder there and switches to it; **Open folder** shows where it is. Or make the folder yourself, by copying [`themes/template/`](../../themes/template) from this repository.
+The easy way to start: the person presses **Theme tab → New theme…** and types a name. That copies the template into a new folder there and switches to it; **Open folder** shows where it is. Or make the folder yourself, by copying [`themes/template/`](../../themes/template) from this repository. For a scoreboard laid over the pool (a header across the top and a board on each lane), copy [`themes/clean/`](../../themes/clean) instead and rewrite its `theme.css`: see [the scoreboard themes](theme-requirements.md#the-scoreboard-themes).
 
 That folder also holds `lanecast-theme.js` and `preview.html`. The app keeps both current; leave them alone.
 
@@ -167,7 +169,7 @@ Lanecast runs a theme's pages in frames that may run scripts and nothing more. T
 | Everything the theme needs is in its folder | A pool's network is often poor or absent. No fonts, scripts or images from the internet |
 | The overlay's background stays transparent | An opaque `html` or `body` background hides the camera |
 | Do not set `color-scheme: dark` on the page | The frame stops being transparent |
-| Size the overlay in `vh` and `vw` | The picture is shown at many sizes; pixel sizes will be wrong at most of them |
+| Size the overlay in `vh` and `vw`, or draw on a fixed canvas and scale the whole of it | The picture is shown at many sizes; pixel sizes will be wrong at most of them |
 | Keep `state` handlers cheap | They run up to ten times a second. Rebuild elements only when what they show has changed, or animations restart every tick |
 | Use the names and times as given | `clock`, lane `time` and `place` are what the timing console displays. Do not run a clock of your own or re-sort by time |
 | The overlay cannot be clicked | Put anything clickable in the control panel |
@@ -177,6 +179,7 @@ Also expect data to be missing. Without start lists there are no names, no `titl
 
 ## Done means
 
+- [ ] If there is a `REQUIREMENTS.md`, it says what the theme now does, and its *Checked* list is ticked only for what you saw
 - [ ] `theme.json` has a name and a description that says which camera and position names the theme expects, if any
 - [ ] Every page has the `../lanecast-theme.js` script tag, unchanged
 - [ ] You looked at it at the lineup, mid-race and on the results, in the preview or the app

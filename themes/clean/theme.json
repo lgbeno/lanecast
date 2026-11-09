@@ -1,0 +1,11 @@
+{
+  "name": "Clean",
+  "version": "1.0.0",
+  "author": "Lanecast",
+  "description": "The plain scoreboard: event, heat, the event's name and the clock across the top, and a board on each lane with the lineup, splits, and places and times. Line it up with your pool in its settings.",
+  "overlay": "overlay.html",
+  "control": {
+    "page": "control.html",
+    "width": 300
+  }
+}

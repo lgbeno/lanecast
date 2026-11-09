@@ -1,0 +1,76 @@
+/* The layout every "scoreboard on the lanes" theme shares: a header across the top (event, heat, the event's name, the
+ * clock) and a column of rows down one side, one a lane, sitting on the lanes in the picture. Layout only: where things are
+ * and how big. What they look like, and how they arrive and leave, is the theme's own theme.css.
+ *
+ * Everything is drawn on a 1920 x 1080 canvas that scoreboard.js scales to the picture, so a theme is designed in pixels,
+ * as for a 1080p broadcast, and looks the same at every size. Inside the header 1em is 16px. Inside the lanes 1em is 16px
+ * when a row is 67px tall (eight lanes in the lower 60% of the picture) and grows and shrinks with the rows, so size
+ * everything in the lanes in em and it fits six lanes or ten.
+ *
+ * This file, scoreboard.js, control.html and settings.html are the same in every theme that uses them; the app's tests
+ * check that they are. To change one, change it in all of them.
+ */
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html, body { height: 100%; background: transparent; overflow: hidden; }
+
+#sb { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; transform-origin: 0 0; transform: scale(var(--k, 1)); overflow: hidden; font-size: 16px; }
+#sb.off .header-container, #sb.off .lanes-container { visibility: hidden; }
+.header-container, .lanes-container { transition: opacity .35s; }
+.header-container.away, .lanes-container.away { opacity: 0; }
+
+/* ---- header: [ event ][ heat ][ the event's name, scrolling if long ][ clock ] ---- */
+.header-container { position: absolute; top: 20px; left: 20px; right: 20px; display: flex; flex-direction: row; gap: 8px; height: 70px; }
+.header-box { height: 100%; }
+#eventBox { width: 170px; flex-shrink: 0; }
+#heatBox { width: 130px; flex-shrink: 0; }
+#timerBox { width: 264px; flex-shrink: 0; position: relative; }
+.header-box.stretch { flex: 1; position: relative; min-width: 0; }
+.header-content { height: 100%; display: flex; align-items: center; justify-content: center; padding: 0 20px; transform: translateY(-100%); opacity: 0; }
+.label { font-weight: 600; text-transform: uppercase; margin-right: 10px; }
+.value { font-weight: bold; font-variant-numeric: tabular-nums; }
+.event-name { text-transform: uppercase; letter-spacing: 2px; white-space: nowrap; }
+.event-name-wrapper { overflow: hidden; flex: 1; display: flex; align-items: center; justify-content: center; min-width: 0; height: 100%; }
+.event-name-track { display: flex; white-space: nowrap; }
+.event-name-wrapper.scrolling { justify-content: flex-start; }
+.event-name-wrapper.scrolling .event-name-track { animation: sbMarquee var(--scroll-duration, 10s) linear infinite; }
+.event-name-copy { display: none; padding-left: 100px; }
+.event-name-wrapper.scrolling .event-name-copy { display: inline; }
+@keyframes sbMarquee { 0% { transform: translateX(0); } 100% { transform: translateX(var(--scroll-distance)); } }
+
+/* ---- clock: in the header's last box, only while a race is on ---- */
+.timer-container { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; }
+.timer-content { height: 100%; width: 100%; padding: 0 20px; display: flex; align-items: center; justify-content: center; transform: scale(0); opacity: 0; position: relative; white-space: nowrap; }
+.timer-label { margin-right: 15px; text-transform: uppercase; }
+.running-time { font-variant-numeric: tabular-nums; letter-spacing: 2px; }
+
+/* ---- lanes: a column down one side, one row a lane, placed over the pool's lanes by the theme's settings ---- */
+.lanes-container { position: absolute; right: 0; top: calc(var(--lanes-top, .41) * 1080px); height: calc((var(--lanes-bottom, 1) - var(--lanes-top, .41)) * 1080px);
+  font-size: calc(16px * var(--s, 1)); width: 47.5em; display: flex; flex-direction: column; padding: 20px 0; }
+.lane-box { position: relative; flex: 1 1 0; min-height: 0; margin: 4px 0; }
+.lane-content, .lineup-content { position: absolute; left: 0; top: 0; height: 100%; width: calc(100% - 4.4em); display: flex; align-items: center; padding: 0 1.25em; transform: scaleX(0); transform-origin: right center; opacity: 0; }
+.lane-info { display: flex; flex: 1; justify-content: space-between; align-items: center; gap: 1em; padding: 0 .6em; min-width: 0; }
+.lineup-info { display: flex; flex: 1; align-items: center; padding: 0 .6em; min-width: 0; }
+.place-indicator { font-weight: bold; min-width: 2em; text-align: center; margin-right: .4em; flex-shrink: 0; white-space: nowrap; }
+.swimmer-name, .lineup-name, .lineup-team { text-transform: uppercase; letter-spacing: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.lineup-name { margin-right: .7em; }
+.lineup-team { flex-shrink: 0; max-width: 45%; }
+.swimmer-team { display: none; flex-shrink: 0; white-space: nowrap; text-transform: uppercase; }
+.final-time { font-variant-numeric: tabular-nums; text-align: right; flex-shrink: 0; white-space: nowrap; }
+.split-content { position: absolute; right: 4.4em; top: 0; height: 100%; display: flex; align-items: center; padding: 0 1.25em; transform: scaleX(0); transform-origin: right center; opacity: 0; }
+.split-time { font-variant-numeric: tabular-nums; white-space: nowrap; }
+/* The lane's own marker: there for every lane someone is in */
+.lane-indicator { position: absolute; right: 1.25em; top: 50%; transform: translateY(-50%); width: 3.125em; height: 3.125em; display: flex; align-items: center; justify-content: center; font-weight: bold; z-index: 10; }
+.lane-indicator.gone { visibility: hidden; }
+/* A lane nobody is in: its marker bursts and is gone */
+.lane-indicator.brick-explode { animation: sbBurst .4s ease-out forwards; }
+@keyframes sbBurst { 0% { transform: translateY(-50%) scale(1); opacity: 1; } 30% { transform: translateY(-50%) scale(1.3); opacity: 1; } 100% { transform: translateY(-50%) scale(0); opacity: 0; } }
+.brick-fragment { position: absolute; width: 10px; height: 10px; border-radius: 2px; pointer-events: none; z-index: 100; animation: sbFragment .6s ease-out forwards; }
+@keyframes sbFragment { 0% { opacity: 1; transform: translate(0, 0) rotate(0deg); } 100% { opacity: 0; transform: translate(var(--fx), var(--fy)) rotate(720deg); } }
+
+/* The lanes on the left of the picture instead: everything mirrored */
+#sb.left .lanes-container { right: auto; left: 0; }
+#sb.left .lane-content, #sb.left .lineup-content { left: auto; right: 0; transform-origin: left center; }
+#sb.left .split-content { right: auto; left: 4.4em; transform-origin: left center; }
+#sb.left .lane-indicator { right: auto; left: 1.25em; }
+
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: 1ms !important; animation-delay: 0ms !important; transition-duration: 1ms !important; } .event-name-wrapper.scrolling .event-name-track { animation: none !important; } }

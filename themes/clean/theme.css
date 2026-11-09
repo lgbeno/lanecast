@@ -1,0 +1,59 @@
+/* Clean: dark panels, white type, a tint of gold, silver and bronze for the first three. Nothing else.
+ * Sizes in the lanes are in em (see scoreboard.css); in the header they are in px on the 1920 x 1080 canvas. */
+:root {
+  --font: Arial, Helvetica, sans-serif;
+  --panel: rgba(8, 12, 18, .84);
+  --panel-light: rgba(8, 12, 18, .7);
+  --ink: rgba(255, 255, 255, .96);
+  --ink-soft: rgba(255, 255, 255, .8);
+  --first: rgba(255, 215, 0, .4);
+  --second: rgba(205, 210, 215, .36);
+  --third: rgba(205, 127, 50, .42);
+  --radius: 4px;
+  --shadow: 0 2px 10px rgba(0, 0, 0, .5);
+}
+#sb { font-family: var(--font); color: var(--ink-soft); }
+
+/* ---- header ---- */
+.header-content, .timer-content { background: var(--panel); border-radius: var(--radius); box-shadow: var(--shadow); }
+.header-content.visible { animation: dropIn .4s ease-out both; }
+.header-content.hiding { animation: liftOut .3s ease-in both; }
+#heatBox .header-content.visible { animation-delay: .1s; }
+#nameBox .header-content.visible { animation-delay: .2s; }
+.header-content.exploding { animation: liftOut .3s ease-in both; }
+.header-content.appearing { animation: dropIn .3s ease-out both; }
+@keyframes dropIn { from { transform: translateY(-100%); opacity: 0; } to { transform: none; opacity: 1; } }
+@keyframes liftOut { from { transform: none; opacity: 1; } to { transform: translateY(-100%); opacity: 0; } }
+.label { font-size: 14px; }
+.value { font-size: 32px; color: var(--ink); }
+.event-name { font-size: 29px; font-weight: 600; }
+
+/* ---- clock ---- */
+.timer-content.visible { animation: growIn .4s ease-out both; }
+.timer-content.hiding { animation: shrinkOut .3s ease-in both; }
+@keyframes growIn { from { transform: scale(.8); opacity: 0; } to { transform: none; opacity: 1; } }
+@keyframes shrinkOut { from { transform: none; opacity: 1; } to { transform: scale(.8); opacity: 0; } }
+.timer-label { font-size: 16px; font-weight: 600; }
+.running-time { font-size: 46px; font-weight: bold; color: var(--ink); }
+
+/* ---- lanes ---- */
+.lane-content, .lineup-content, .split-content { border-radius: var(--radius); box-shadow: var(--shadow); }
+.lane-content, .split-content { background: var(--panel); }
+.lineup-content { background: var(--panel-light); }
+.lane-content.visible, .lineup-content.visible, .split-content.visible { animation: slideIn .4s ease-out both; }
+.lane-content.hiding, .split-content.hiding { animation: slideOut .3s ease-in both; }
+.lineup-content.hiding { animation: fadeOut .2s ease-out both; }
+@keyframes slideIn { from { transform: scaleX(0); opacity: 0; } to { transform: scaleX(1); opacity: 1; } }
+@keyframes slideOut { from { transform: scaleX(1); opacity: 1; } to { transform: scaleX(0); opacity: 0; } }
+@keyframes fadeOut { from { transform: scaleX(1); opacity: 1; } to { transform: scaleX(1); opacity: 0; } }
+.lineup-name, .swimmer-name { font-size: 1.8em; font-weight: 600; }
+.lineup-team { font-size: 1.4em; }
+.place-indicator { font-size: 2.3em; }
+.final-time, .split-time { font-size: 2.6em; font-weight: bold; }
+.lane-content.first-place { background: linear-gradient(90deg, var(--first), var(--panel)); }
+.lane-content.second-place { background: linear-gradient(90deg, var(--second), var(--panel)); }
+.lane-content.third-place { background: linear-gradient(90deg, var(--third), var(--panel)); }
+.lane-content.first-place :is(.swimmer-name, .final-time, .place-indicator) { color: var(--ink); }
+/* The marker is 50px square when its font is 16px; at twice the font, half as many em */
+.lane-indicator { font-size: 2em; width: 1.5625em; height: 1.5625em; right: .625em; background: var(--panel); border-radius: var(--radius); box-shadow: var(--shadow); color: var(--ink); }
+#sb.left .lane-indicator { left: .625em; }

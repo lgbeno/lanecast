@@ -11,6 +11,7 @@ A theme is a folder of plain web files. You do not need to read the app's source
 | Read | For |
 | --- | --- |
 | [docs/agents/making-a-theme.md](docs/agents/making-a-theme.md) | **Start here.** What to ask the person, where the files go, the order to build in, how to see your work, and the checklist for done |
+| [docs/agents/theme-requirements.md](docs/agents/theme-requirements.md) | Before building: the form for writing down what the theme should be, how to fill it in with the person, and how to get from it to a theme |
 | [docs/agents/theme-messages.md](docs/agents/theme-messages.md) | Every message a theme receives, with real examples and a whole heat played out |
 | [docs/agents/theme-cookbook.md](docs/agents/theme-cookbook.md) | Working code for the things themes usually do: results boards, picture-in-picture, camera cues, a control panel, saved colours and logos |
 | [docs/themes.md](docs/themes.md) | The reference for the whole `Lanecast` interface |

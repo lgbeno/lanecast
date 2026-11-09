@@ -1,0 +1,29 @@
+<!doctype html>
+<!--
+  Clean — a Lanecast theme. The plain scoreboard: a header across the top and a board on each lane.
+
+  The work is in three files beside this one:
+    scoreboard.js    builds the header and the lane rows and keeps them in step with the race (shared with the other
+                     "scoreboard on the lanes" themes: Arcade, Jaguars, Spooky Splash)
+    scoreboard.css   where everything sits (shared too)
+    theme.css        what it looks like and how it moves: the only file a new look has to change
+
+  To make a theme of your own from this one, copy the folder, change theme.json's name, and rewrite theme.css.
+  REQUIREMENTS.md says what this theme was asked to be.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Clean — Lanecast theme</title>
+<link rel="stylesheet" href="scoreboard.css">
+<link rel="stylesheet" href="theme.css">
+</head>
+<body>
+<div id="sb"></div>
+<script src="../lanecast-theme.js"></script>
+<script src="scoreboard.js"></script>
+<script>
+  Scoreboard.start();
+</script>
+</body>
+</html>
