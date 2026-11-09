@@ -91,6 +91,11 @@ app.on('browser-window-created', (event, win) => {
         let auto; for (let i = 0; i < 50; i++) { await wait(300); auto = await js(`({ busy: document.getElementById('findDevices').disabled, status: ${text('searchStatus')}, items: document.querySelectorAll('#foundList .found-item').length, barGone: document.getElementById('searchProgress').hidden, manual: !!document.getElementById('manualAdd'), dialog: document.getElementById('manualDialog').open, columns: [document.getElementById('camAdd').getBoundingClientRect().x, document.querySelector('.camera-have').getBoundingClientRect().x] })`); if (!auto.busy) break; }
         check(looking.busy && looking.status === 'Searching for network cameras…' && looking.bar && !auto.busy && auto.barGone && /^\d+ found$|^None found$/.test(auto.status), `opening the Camera tab searches by itself, with a progress bar and a message while it does, and finishes: ${auto.status}, ${auto.items} listed`);
         check(auto.manual && !auto.dialog && auto.columns[0] < auto.columns[1], 'finding is on the left, the cameras on the right; adding by hand waits behind Add manually…');
+        // When this computer's network changes, the search runs again by itself: nobody has to press Find cameras after fixing an adapter.
+        win.webContents.send('cameras:network'); await wait(400);
+        const again = await js(`({ busy: document.getElementById('findDevices').disabled, status: ${text('searchStatus')} })`);
+        for (let i = 0; i < 50 && await js(`document.getElementById('findDevices').disabled`); i++) await wait(300);
+        check(again.busy && again.status === 'Searching for network cameras…' && /^\d+ found$|^None found$/.test(await js(text('searchStatus'))), 'a change in the network starts the search again by itself');
         // A second camera, by hand: Add manually… opens the dialog, Add closes it; the tab turns plural.
         await js(`document.getElementById('manualAdd').click()`); await wait(300);
         const manual = await js(`({ open: document.getElementById('manualDialog').open, fields: [...document.getElementById('manualDialog').querySelectorAll('input')].map(i => i.id).join() })`);

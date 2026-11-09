@@ -133,6 +133,27 @@ async function adapters(all = os.networkInterfaces()) {
     return out;
 }
 
+/** This computer's addresses in one string: it changes when an adapter is plugged in, set by hand, or given an address. */
+function networkSignature(all = os.networkInterfaces()) {
+    const out = [];
+    for (const [name, list] of Object.entries(all)) { if (SKIP.test(name)) continue; for (const a of list || []) if (a.family === 'IPv4' && !a.internal) out.push(`${name} ${a.address} ${a.netmask}`); }
+    return out.sort().join('|');
+}
+/** Call onChange when this computer's adapters change: so a camera that was out of reach is looked for again as soon as the
+ *  person has changed the setting, without them asking. It waits for the change to settle (an adapter being set by hand passes
+ *  through having no address) and reports once. Returns a function that stops the watch. */
+function watchNetwork(onChange, { every = 2000, settle = 1500, read = networkSignature } = {}) {
+    let last = read(), reported = last, timer = null;
+    const tick = setInterval(() => {
+        const now = read();
+        if (now === last) return;
+        last = now; clearTimeout(timer);
+        timer = setTimeout(() => { if (last !== reported) { reported = last; onChange(); } }, settle);
+    }, every);
+    if (tick.unref) tick.unref();
+    return () => { clearInterval(tick); clearTimeout(timer); };
+}
+
 // ---- listening ---------------------------------------------------------------------------
 const MDNS = '224.0.0.251', MDNS_PORT = 5353;
 const SERVICES = ['_ndi._tcp.local', '_rtsp._tcp.local'];
@@ -315,4 +336,4 @@ async function discover({ ms = 2600 } = {}) {
     return { cameras, adapters: list, notes: mdns.notes, blocked: cameras.length ? null : blockedBy(mdns.heard), heard: mdns.heard };
 }
 
-module.exports = { discover, diagnose, explain, detail, merge, adapters, blockedBy, decodePacket, encodeQuery, encodeName, Records, parseProbeMatch, rtspStatus, sameNetwork, TYPE, labelsOf };
+module.exports = { discover, diagnose, explain, detail, watchNetwork, networkSignature, merge, adapters, blockedBy, decodePacket, encodeQuery, encodeName, Records, parseProbeMatch, rtspStatus, sameNetwork, TYPE, labelsOf };
