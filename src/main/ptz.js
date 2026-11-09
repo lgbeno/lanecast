@@ -170,6 +170,15 @@ class Ptz {
     }
     move(host, pan, tilt) { if (Number(pan) || Number(tilt)) this._leaveFocus(host); const ok = this._send(host, visca.move(pan, tilt)); this._hold(host, !!(Number(pan) || Number(tilt))); return ok; }
     zoom(host, z) { if (Number(z)) this._leaveFocus(host); const ok = this._send(host, visca.zoom(z)); this._hold(host, !!Number(z)); return ok; }
+    /** Drive pan, tilt and zoom together, each -1..1: for something that steers continuously, such as a theme following a swimmer.
+     *  Like a held button it must be renewed, and left alone the camera is stopped from here. All zero stops at once. */
+    steer(host, pan, tilt, zoom) {
+        if (!(Number(pan) || Number(tilt) || Number(zoom))) return this.stop(host);
+        this._leaveFocus(host);
+        const ok = this._send(host, visca.move(pan, tilt)); this._send(host, visca.zoom(zoom));
+        this._hold(host, true);
+        return ok;
+    }
     stop(host) { const ok = this._send(host, visca.move(0, 0)); this._send(host, visca.zoom(0)); this._hold(host, false); return ok; }
     home(host) { this._leaveFocus(host); return this._send(host, visca.home()); }
     preset(host, n, save) { this._leaveFocus(host); return this._send(host, visca.preset(n, save)); }

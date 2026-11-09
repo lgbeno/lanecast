@@ -174,6 +174,12 @@ app.on('browser-window-created', (event, win) => {
             check(sentSince(mark).join() === goes(1) && /no position named "Nowhere"/.test(noted) && /Pool cannot be steered/.test(noted), `a theme cues a position by name (Lanecast.position); unknown names and cameras that cannot be steered are noted in the theme console`);
             const packet = await overlayFrame.executeJavaScript(`JSON.stringify(Lanecast.state.cameras)`);
             check(/"name":"Finish","steerable":true,"positions":\["Finish line","Blocks"\]/.test(packet) && /"name":"Pool","steerable":false,"positions":\[\]/.test(packet), 'the state message tells themes which cameras can be steered and their position names');
+            // A theme may also drive the camera itself (to follow something): it steers while the calls keep coming, and is stopped when they cease.
+            mark = steered.length;
+            await overlayFrame.executeJavaScript(`Lanecast.steer({ pan: 0.5, zoom: -0.5 }, 'Finish'); Lanecast.steer({ pan: 1 }, 'Pool'); true`); await wait(400);
+            const driving = sentSince(mark).join();
+            await wait(1100);
+            check(driving === '810106010c010203ff,8101040734ff' && sentSince(mark).join() === '810106010c010203ff,8101040734ff,8101060101010303ff,8101040700ff', `a theme steers a camera (Lanecast.steer); when it stops saying so, the camera is stopped: ${sentSince(mark).join(' ')}`);
             await js(`document.getElementById('cameraPanelClose').click(); document.getElementById('tab-cameras').click()`); await wait(400);
             // Edit…: re-teach a position to where the camera points now; remove another; neither moves the camera. Then Home.
             const editing = (name, button) => js(`(() => { const root = ${finishTile}; if (root.querySelector('.ptzEdit').textContent !== 'Done') root.querySelector('.ptzEdit').click(); [...root.querySelectorAll('.ptzPlace')].find(b => b.dataset.position === ${JSON.stringify(name)}).click(); const label = root.querySelector('.ptz-save .primary').textContent; root.querySelector(${JSON.stringify(button)}).click(); return label; })()`);

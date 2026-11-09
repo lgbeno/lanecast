@@ -207,6 +207,7 @@ ipcMain.handle('ptz:probe', async (event, id, again) => { const host = hostOf(id
 ipcMain.handle('ptz:move', (event, id, pan, tilt) => { const host = hostOf(id); return host ? ptz.move(host, Number(pan), Number(tilt)) : false; });
 ipcMain.handle('ptz:zoom', (event, id, zoom) => { const host = hostOf(id); return host ? ptz.zoom(host, Number(zoom)) : false; });
 ipcMain.handle('ptz:stop', (event, id) => { const host = hostOf(id); return host ? ptz.stop(host) : false; });
+ipcMain.handle('ptz:steer', (event, id, pan, tilt, zoom) => { const host = hostOf(id); return host ? ptz.steer(host, Number(pan), Number(tilt), Number(zoom)) : false; });
 ipcMain.handle('ptz:home', (event, id) => { const host = hostOf(id); return host ? ptz.home(host) : false; });
 // Positions have names; what is kept under each is the camera record's business, never the window's. Saving one (new, or
 // re-taught under the same name) reads where the camera points and keeps that, so the project carries the position and

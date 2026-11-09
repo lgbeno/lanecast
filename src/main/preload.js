@@ -49,6 +49,7 @@ contextBridge.exposeInMainWorld('lanecast', {
         move: (id, pan, tilt) => invoke('ptz:move', id, pan, tilt),
         zoom: (id, zoom) => invoke('ptz:zoom', id, zoom),
         stop: id => invoke('ptz:stop', id),
+        steer: (id, pan, tilt, zoom) => invoke('ptz:steer', id, pan, tilt, zoom),
         home: id => invoke('ptz:home', id),
         savePosition: (id, name) => invoke('ptz:savePosition', id, name),
         goPosition: (id, name) => invoke('ptz:goPosition', id, name),

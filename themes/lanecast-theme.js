@@ -18,6 +18,9 @@
  *   Lanecast.layout({ x, y, w, h, fit })      place the camera: fractions of the picture (0-1), fit 'cover' | 'contain'
  *   Lanecast.position(name, camera?)          steer a camera to a position saved under that name (the program camera
  *                                             unless one is named); state.cameras[i].positions lists the names
+ *   Lanecast.steer({ pan, tilt, zoom }, camera?)  drive a camera, each -1..1 (right, up, in; the size is the speed). Call it again
+ *                                             several times a second while it should keep moving: it stops by itself within a
+ *                                             second of the last call. Lanecast.steer() stops at once
  *   Lanecast.send(message)                    to the theme's other pages: they get it as on('<your role>')
  *   Lanecast.saveSettings({ ... })            merge into the saved settings; every page gets 'settings'
  *   Lanecast.dialog('settings.html', opts)    pop out a page of this theme as a modal: { title, width, height }
@@ -62,6 +65,7 @@
     api.camera = idOrName => post({ type: 'camera', select: idOrName });
     api.layout = box => post({ type: 'layout', ...box });
     api.position = (name, camera) => post({ type: 'position', name: String(name), camera: camera === undefined ? null : camera });
+    api.steer = (drive, camera) => { const v = drive || {}; post({ type: 'steer', pan: Number(v.pan) || 0, tilt: Number(v.tilt) || 0, zoom: Number(v.zoom) || 0, camera: camera === undefined ? null : camera }); };
     api.send = data => post({ type: 'send', data });
     api.saveSettings = data => post({ type: 'settings', data });
     api.dialog = (page, options = {}) => post({ type: 'dialog', page, title: options.title || '', width: options.width || 520, height: options.height || 480 });

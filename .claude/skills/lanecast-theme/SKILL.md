@@ -32,6 +32,8 @@ Lanecast.camera('Finish')           // cut to a camera by the name the user gave
 Lanecast.layout({ x, y, w, h, fit })// place the camera, fractions 0–1; fit 'contain' | 'cover'
 Lanecast.position('Finish line')    // steer the program camera (PTZ) to a position the user saved under that name;
                                     // Lanecast.position('Blocks', 'Wide') for another camera. state.cameras[i] = { id, name, steerable, positions: [names] }
+Lanecast.steer({ pan, tilt, zoom }) // drive the camera, each -1..1; call again several times a second to keep it moving (it stops
+                                    // by itself within a second of the last call); Lanecast.steer() stops. The theme cannot see the picture.
 Lanecast.send({ … })                // to the theme's other pages, as on('overlay'|'control'|'dialog')
 Lanecast.dialog('settings.html', { title, width, height })   // pop out a page as a modal; Lanecast.closeDialog() closes it
 Lanecast.saveSettings({ … }); Lanecast.on('settings', s => …)   // the theme's own saved settings, per theme, across runs

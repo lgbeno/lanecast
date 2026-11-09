@@ -666,6 +666,13 @@
                 else api.ptz.goPosition(cam.id, String(m.name)).then(ok => { if (!ok) note(`${cam.name} has no position named ${JSON.stringify(m.name)}`); }, () => {});
                 break;
             }
+            case 'steer': {
+                // Drive a camera: pan, tilt and zoom each -1..1. Renewed by the theme while it should keep moving; the main process stops
+                // the camera when the renewals cease. Said many times a second, so nothing is noted when the camera cannot be steered.
+                const cam = m.camera === undefined || m.camera === null ? cameraList.find(c => c.id === programCameraId()) : cameraByRef(m.camera);
+                if (cam && canSteer(cam)) api.ptz.steer(cam.id, Number(m.pan) || 0, Number(m.tilt) || 0, Number(m.zoom) || 0).catch(() => {});
+                break;
+            }
             case 'layout': setLayout(m); break;
             case 'send': for (const which of Object.keys(frames)) if (which !== from) toFrame(which, { type: from, data: m.data }); break;   // to the theme's other pages
             case 'settings':
