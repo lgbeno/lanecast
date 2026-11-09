@@ -7,7 +7,7 @@ The built-in themes. Each is a folder with a `theme.json`, an `overlay.html` dra
 - `arcade/` — the scoreboard as an 8-bit game: bevelled blocks, a lit marquee, a coin for every finisher, a flashing high score for the winner, a duck at each new event.
 - `jaguars/` — a school's championship look in green and gold, with every swimmer's school in its own colours; a dialog says which team code is which school.
 - `spooky/` — Spooky Splash, for a Halloween meet: gravestones, a coffin that slides open, jack-o'-lantern lane numbers, a ghost, witch, zombie or mummy crossing at each new event, a spider's web when a heat is done.
-- `template/` — the starting point for your own: everything commented, a control panel, a settings dialog (colours, meet name, logo) saved per theme, the camera directed from the theme. **Theme tab → New theme…** copies it into your themes folder, with a blank `REQUIREMENTS.md`: the form for writing down what a theme should be before building it.
+- `template/` — the starting point for your own: everything commented, a control panel, a settings dialog (colours, meet name, logo) saved per theme, the camera directed from the theme. **Theme tab → New theme…** copies it into your themes folder (or any other theme you pick under **Start from**), with a blank `REQUIREMENTS.md`: the form for writing down what a theme should be before building it.
 
 - `preview.html` — see a theme react to a race without the app or a meet: open `preview.html?theme=template` in a browser. It plays a scripted heat into the theme and logs what the theme asks the app to do.
 

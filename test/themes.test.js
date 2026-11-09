@@ -85,3 +85,43 @@ test('a font shipped in a built-in theme has its licence beside it', () => {
     assert(fonts >= 1, 'found the Arcade theme\'s font');
     assert(/SIL Open Font License/.test(read('arcade', 'fonts/OFL.txt')));
 });
+
+// A new theme of the user's own is a copy of another, with a blank requirements form under its own name
+(async () => {
+    const os = require('node:os'), fsp = require('node:fs/promises');
+    const { Themes } = require('../src/main/themes');
+    const userDir = await fsp.mkdtemp(path.join(os.tmpdir(), 'lanecast-themes-'));
+    try {
+        const made = new Themes({ userDir });
+        const plain = await made.create('Dolphins 2026');
+        assert.equal(plain, 'u-dolphins-2026');
+        const at = (...parts) => path.join(userDir, ...parts), text = (...parts) => fs.readFileSync(at(...parts), 'utf8');
+        assert.equal(JSON.parse(text('dolphins-2026', 'theme.json')).name, 'Dolphins 2026');
+        assert(/started from the Lanecast template/.test(JSON.parse(text('dolphins-2026', 'theme.json')).description));
+        assert(text('dolphins-2026', 'REQUIREMENTS.md').startsWith('# Requirements: Dolphins 2026\n'), 'the form carries the new name');
+        assert(!fs.existsSync(at('dolphins-2026', 'STARTED-FROM.md')), 'the template leaves nothing to start from');
+        assert(!/\]\(\.\.\//.test(text('dolphins-2026', 'REQUIREMENTS.md')), 'no link points back into the repository by a relative path');
+        assert(/\]\(https:\/\/github\.com\/lgbeno\/lanecast\/blob\/main\/docs\/agents\/theme-requirements\.md\)/.test(text('dolphins-2026', 'REQUIREMENTS.md')), 'the guide is linked online');
+        assert(fs.existsSync(at('lanecast-theme.js')) && fs.existsSync(at('preview.html')), 'the runtime and the preview page sit beside it');
+
+        const board = await made.create('Spring Sprint', 'b-arcade');
+        assert.equal(board, 'u-spring-sprint');
+        const m = JSON.parse(text('spring-sprint', 'theme.json'));
+        assert.deepEqual([m.name, m.author, m.description, m.control.page], ['Spring Sprint', '', 'My theme, started from Arcade.', 'control.html']);
+        for (const file of [...SHARED, 'theme.css', 'overlay.html', 'fonts/PressStart2P-Regular.ttf', 'fonts/OFL.txt']) assert(fs.existsSync(at('spring-sprint', file)), `the copy has ${file}`);
+        assert.equal(text('spring-sprint', 'scoreboard.js'), read('arcade', 'scoreboard.js'), 'the engine is copied unchanged');
+        const form = text('spring-sprint', 'REQUIREMENTS.md'), before = text('spring-sprint', 'STARTED-FROM.md');
+        assert(form.startsWith('# Requirements: Spring Sprint\n') && /\| \*\*Starts from\*\* \| Arcade\. .*\[STARTED-FROM\.md\]\(STARTED-FROM\.md\) \|/.test(form), 'a blank form that says where it started');
+        assert(/`event\.change`/.test(form) && /<the club, the meet, the date>/.test(form), 'and is otherwise blank');
+        assert(before.startsWith('# Requirements: Arcade\n') && !/\]\(\.\.\//.test(before) && /blob\/main\/themes\/template\/REQUIREMENTS\.md/.test(before), 'what Arcade was asked to be is kept, with its links pointing online');
+
+        const again = await made.create('Sprint Two', board);                                   // from a theme of the user's own
+        assert(/started from Spring Sprint/.test(JSON.parse(text('sprint-two', 'theme.json')).description));
+        await assert.rejects(made.create('Spring Sprint', 'b-clean'), /already exists/);
+        await assert.rejects(made.create('Another', 'b-no-such-theme'), /no longer there/);
+        await assert.rejects(made.create('  '), /Give the theme a name/);
+        assert.equal((await made.list()).filter(t => t.source === 'mine').length, 3);
+        console.log('PASS a new theme starts as a copy of the template or of any other theme, with a blank requirements form under its own name');
+    } catch (e) { console.error('FAIL a new theme starts as a copy'); console.error(e); process.exitCode = 1; }
+    finally { await fsp.rm(userDir, { recursive: true, force: true }); }
+})();

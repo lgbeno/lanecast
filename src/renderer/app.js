@@ -741,13 +741,22 @@
         $('themeLog').textContent = themes.log.join('\n');
     }
     // New theme…: a name is all it asks; the theme starts from the template, in its own folder, and is switched to.
-    $('newThemeOpen').onclick = () => { hideError(); $('newThemeName').value = ''; $('themeNote').textContent = ''; $('newThemeDialog').showModal(); $('newThemeName').focus(); };
+    // A new theme starts as a copy of another: the template unless something else is picked. The template comes first, then the rest as listed.
+    const startFrom = () => themes.list.find(t => t.id === $('newThemeFrom').value) || null;
+    const aboutStart = () => { const t = startFrom(); $('newThemeAbout').textContent = t ? t.description : ''; };
+    $('newThemeFrom').onchange = aboutStart;
+    $('newThemeOpen').onclick = () => {
+        hideError(); $('newThemeName').value = ''; $('themeNote').textContent = '';
+        const plain = t => t.source === 'built-in' && /(^|-)template$/.test(t.id), order = [...themes.list.filter(plain), ...themes.list.filter(t => !plain(t))];
+        $('newThemeFrom').replaceChildren(...order.map(t => { const o = document.createElement('option'); o.value = t.id; o.textContent = t.name + (plain(t) ? ' (a plain start)' : ''); return o; }));
+        aboutStart(); $('newThemeDialog').showModal(); $('newThemeName').focus();
+    };
     $('newThemeCancel').onclick = () => $('newThemeDialog').close();
     async function newTheme() {
         const name = $('newThemeName').value.trim();
         if (!name) { $('themeNote').textContent = 'Give the theme a name first.'; return; }
         $('newTheme').disabled = true;
-        try { const id = await api.themes.create(name); await api.themes.select(id); await refreshThemes(id); $('newThemeDialog').close(); }
+        try { const id = await api.themes.create(name, $('newThemeFrom').value); await api.themes.select(id); await refreshThemes(id); $('newThemeDialog').close(); }
         catch (e) { $('themeNote').textContent = e.message.replace(/^Error invoking remote method '[^']+': (Error: )?/, ''); }
         $('newTheme').disabled = false;
     }

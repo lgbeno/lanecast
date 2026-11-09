@@ -15,6 +15,8 @@ const KIT = ['lanecast-theme.js', 'preview.html'];
 const MIME = { html: 'text/html; charset=utf-8', js: 'text/javascript; charset=utf-8', mjs: 'text/javascript; charset=utf-8', css: 'text/css; charset=utf-8', json: 'application/json', svg: 'image/svg+xml',
     png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', webp: 'image/webp', mp4: 'video/mp4', webm: 'video/webm', mp3: 'audio/mpeg', wav: 'audio/wav', ogg: 'audio/ogg',
     woff: 'font/woff', woff2: 'font/woff2', ttf: 'font/ttf', otf: 'font/otf', txt: 'text/plain; charset=utf-8', md: 'text/plain; charset=utf-8' };
+// Where a new theme's documents point once they are outside this repository
+const REPOSITORY = 'https://github.com/lgbeno/lanecast';
 const slug = name => String(name || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40);
 
 class Themes {
@@ -97,18 +99,40 @@ class Themes {
         on(BUILTIN, name => name === 'lanecast-theme.js' ? '*' : name && !name.includes('.') ? 'b-' + slug(name) : '');      // in development the built-in ones are edited too
         return () => { for (const w of watchers) { try { w.close(); } catch (e) { /* closed */ } } clearTimeout(timer); };
     }
-    /** Copy the template into the user's themes folder under a new name; returns the new theme's id. */
-    async createFromTemplate(name) {
+    /** Start a theme of the user's own as a copy of another (the template, unless one is named by its id); returns the new theme's id. */
+    async create(name, fromId) {
         const folder = slug(name); if (!folder) throw new Error('Give the theme a name');
         const to = path.join(this.userDir, folder);
         if (fs.existsSync(to)) throw new Error(`A theme folder called ${folder} already exists`);
+        if (!this.themes.size) await this.list();
+        const from = fromId ? this.themes.get(fromId) : this.themes.get('b-template');
+        if (!from) throw new Error('The theme to start from is no longer there');
+        const title = String(name).trim(), template = from.id === 'b-template';
         await this.ensureKit();
-        await fsp.cp(path.join(BUILTIN, 'template'), to, { recursive: true });
+        await fsp.cp(from.folder, to, { recursive: true });
         const manifest = path.join(to, 'theme.json'), m = JSON.parse(await fsp.readFile(manifest, 'utf8'));
-        m.name = String(name).trim(); m.author = ''; m.description = 'My theme, started from the Lanecast template.';
+        m.name = title; m.author = ''; m.version = '1.0.0'; m.description = template ? 'My theme, started from the Lanecast template.' : `My theme, started from ${from.name}.`;
         await fsp.writeFile(manifest, JSON.stringify(m, null, 2) + '\n');
+        await this.requirements(to, from, title);
         await this.list();
         return 'u-' + folder;
+    }
+    /** The new theme's REQUIREMENTS.md: the blank form, under the new name. What the theme it was copied from was asked to be is kept beside it
+     *  as STARTED-FROM.md, since that is what the copy does until it is changed. Links that pointed into this repository are made to point at it online. */
+    async requirements(to, from, title) {
+        const form = path.join(to, 'REQUIREMENTS.md'), blank = path.join(BUILTIN, 'template', 'REQUIREMENTS.md');
+        const online = text => text.replace(/\]\(\.\.\/\.\.\/docs\//g, `](${REPOSITORY}/blob/main/docs/`).replace(/\]\(\.\.\/(?!\.)/g, `](${REPOSITORY}/blob/main/themes/`);
+        const template = from.id === 'b-template';
+        try {
+            if (!template) {
+                if (!fs.existsSync(form)) return;                        // copied from a theme that has no requirements: leave it so
+                const theirs = await fsp.readFile(form, 'utf8');
+                await fsp.writeFile(path.join(to, 'STARTED-FROM.md'), from.source === 'built-in' ? online(theirs) : theirs);
+            }
+            let text = online(await fsp.readFile(blank, 'utf8')).replace('# Requirements: <theme name>', `# Requirements: ${title}`);
+            if (!template) text = text.replace(/\| \*\*Starts from\*\* \|[^\n]*\|/, `| **Starts from** | ${from.name}. What that theme was asked to be, and so what this one does until it is changed, is in [STARTED-FROM.md](STARTED-FROM.md) |`);
+            await fsp.writeFile(form, text);
+        } catch (e) { /* the theme works without its paperwork */ }
     }
 }
 
