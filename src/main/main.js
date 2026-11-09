@@ -69,8 +69,10 @@ app.whenReady().then(async () => {
     for (const p of PARTS) simulated[p] = allSimulated || !!(saved && saved[p]);
     // The window may open this computer's cameras (webcams, an iPhone as a camera); nothing else asks for permissions.
     const { session } = require('electron');
-    session.defaultSession.setPermissionRequestHandler((contents, permission, callback) => callback(permission === 'media'));
-    session.defaultSession.setPermissionCheckHandler((contents, permission) => permission === 'media');
+    // ...and it may put text on the clipboard (the Copy button beside a network setting to enter); it never reads it.
+    const allowed = new Set(['media', 'clipboard-sanitized-write']);
+    session.defaultSession.setPermissionRequestHandler((contents, permission, callback) => callback(allowed.has(permission)));
+    session.defaultSession.setPermissionCheckHandler((contents, permission) => allowed.has(permission));
     themes = new Themes({ userDir: path.join(app.getPath('userData'), 'themes') });
     await themes.list();
     protocol.handle('theme', request => themes.serve(request));
@@ -187,6 +189,8 @@ ipcMain.handle('cameras:access', async () => {
     return (await systemPreferences.askForMediaAccess('camera')) ? 'granted' : systemPreferences.getMediaAccessStatus('camera');
 });
 ipcMain.handle('cameras:list', () => cameras.list());
+// Cameras that announce themselves on any adapter, each with whether it can be reached and, if not, what to set.
+ipcMain.handle('cameras:discover', () => require('./discover').discover());
 ipcMain.handle('cameras:add', (event, camera) => cameras.add(camera || {}));
 ipcMain.handle('cameras:update', (event, id, patch) => cameras.update(String(id), patch || {}));
 ipcMain.handle('cameras:remove', (event, id) => cameras.remove(String(id)));
