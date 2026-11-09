@@ -205,16 +205,21 @@ ipcMain.handle('ptz:move', (event, id, pan, tilt) => { const host = hostOf(id); 
 ipcMain.handle('ptz:zoom', (event, id, zoom) => { const host = hostOf(id); return host ? ptz.zoom(host, Number(zoom)) : false; });
 ipcMain.handle('ptz:stop', (event, id) => { const host = hostOf(id); return host ? ptz.stop(host) : false; });
 ipcMain.handle('ptz:home', (event, id) => { const host = hostOf(id); return host ? ptz.home(host) : false; });
-// Positions have names; the camera's preset number behind each is the camera record's business, never the window's.
+// Positions have names; what is kept under each is the camera record's business, never the window's. Saving one (new, or
+// re-taught under the same name) reads where the camera points and keeps that, so the project carries the position and
+// nothing has to be programmed into the camera. A camera that will not say where it points gets one of its own preset
+// slots instead, and the position is stored there.
 ipcMain.handle('ptz:savePosition', async (event, id, name) => {
     const host = hostOf(id);
     if (!host || !await ptz.probe(host)) throw new Error('That camera cannot be steered from here');
-    ptz.preset(host, cameras.savePosition(String(id), name), true);
+    const spot = await ptz.where(host), saved = cameras.savePosition(String(id), name, spot);
+    if (!spot) ptz.preset(host, saved.preset, true);
     return cameras.describe(cameras.find(String(id))).positions;
 });
 ipcMain.handle('ptz:goPosition', async (event, id, name) => {
-    const host = hostOf(id), preset = host ? cameras.positionPreset(String(id), name) : null;
-    return preset !== null && !!await ptz.probe(host) && ptz.preset(host, preset, false);
+    const host = hostOf(id), spot = host ? cameras.position(String(id), name) : null;
+    if (!spot || !await ptz.probe(host)) return false;
+    return Number.isInteger(spot.pan) ? ptz.goTo(host, spot) : ptz.preset(host, spot.preset, false);
 });
 ipcMain.handle('ptz:removePosition', (event, id, name) => cameras.removePosition(String(id), name));
 // When macOS shut the search out: open the one settings pane where the person allows it. A fixed address, nothing the window chooses.

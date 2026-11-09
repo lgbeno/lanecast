@@ -12,6 +12,9 @@
 const dgram = require('node:dgram');
 
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+/** A 16-bit value (negative ones in two's complement) as VISCA sends it: four bytes, a nibble in each. */
+const nibbles = v => { const u = Math.round(Number(v) || 0) & 0xffff; return [(u >> 12) & 15, (u >> 8) & 15, (u >> 4) & 15, u & 15]; };
+const whole = (v, lo, hi) => Number.isInteger(v) && v >= lo && v <= hi;
 /** VISCA messages for camera address 1, as byte arrays. */
 const visca = {
     versionInquiry: () => [0x81, 0x09, 0x00, 0x02, 0xff],
@@ -25,6 +28,11 @@ const visca = {
     /** Zoom in -1..1, in positive, the size the speed. 0 stops. */
     zoom(z) { const v = clamp(Number(z) || 0, -1, 1), s = clamp(Math.round(Math.abs(v) * 7), 0, 7); return [0x81, 0x01, 0x04, 0x07, v > 0 ? 0x20 | s : v < 0 ? 0x30 | s : 0x00, 0xff]; },
     home: () => [0x81, 0x01, 0x06, 0x04, 0xff],
+    zoomInquiry: () => [0x81, 0x09, 0x04, 0x47, 0xff],
+    /** Go to a pan and tilt read earlier from the position inquiry, at full speed. */
+    absolute: (pan, tilt) => [0x81, 0x01, 0x06, 0x02, 0x18, 0x14, ...nibbles(pan), ...nibbles(tilt), 0xff],
+    /** Go to a zoom read earlier from the zoom inquiry. */
+    zoomTo: zoom => [0x81, 0x01, 0x04, 0x47, ...nibbles(zoom), 0xff],
     /** Go to preset n, or with `save` store where the camera is now as preset n. */
     preset(n, save = false) { return [0x81, 0x01, 0x04, 0x3f, save ? 0x01 : 0x02, clamp(Math.round(Number(n) || 0), 0, 127), 0xff]; }
 };
@@ -49,23 +57,35 @@ function position(message) {
     return { pan: read(2), tilt: read(6) };
 }
 
-// Named positions. The person names where the camera points; behind each name is one of the camera's numbered presets,
-// chosen here and never shown. 0 to 9 are left alone (they are what people store from the camera's own remote), and so
-// are 90 and up (several makers give those numbers special jobs, such as opening the camera's menu).
+/** The zoom out of the zoom inquiry's answer (90 50 then four nibbles), or null. */
+function zoomOf(message) {
+    if (!message || message[1] !== 0x50 || message.length !== 7) return null;
+    return ((message[2] & 15) << 12) | ((message[3] & 15) << 8) | ((message[4] & 15) << 4) | (message[5] & 15);
+}
+
+// Named positions. The person names where the camera points. What is kept under the name is where the camera said it was
+// pointing, { pan, tilt, zoom }, read from it when the position is saved: so the position lives in the project, nothing
+// has to be stored in the camera, and opening the project on another day needs no re-programming. A camera that will not
+// say where it points gets the older arrangement instead: one of its own numbered presets, { preset }, chosen here.
+// 0 to 9 are left alone (they are what people store from the camera's own remote), and so are 90 and up (several makers
+// give those numbers special jobs, such as opening the camera's menu).
 const PRESET_FIRST = 10, PRESET_LAST = 89;
 /** The lowest preset number no position of this camera uses yet, or null when they are all taken. */
 function allocatePreset(positions) {
-    const used = new Set((positions || []).map(p => p.preset));
+    const used = new Set((positions || []).map(p => p.preset).filter(Number.isInteger));
     for (let n = PRESET_FIRST; n <= PRESET_LAST; n++) if (!used.has(n)) return n;
     return null;
 }
-/** A camera's positions as read from a settings or project file: [{ name, preset }], names and numbers each used once. */
+/** A camera's positions as read from a settings or project file: [{ name, pan, tilt, zoom }] or [{ name, preset }], each name once. */
 function cleanPositions(list) {
     const out = [], names = new Set(), numbers = new Set();
     for (const p of Array.isArray(list) ? list : []) {
-        const name = String((p && p.name) || '').trim().slice(0, 40), preset = Number(p && p.preset);
-        if (!name || !Number.isInteger(preset) || preset < 0 || preset > 127 || names.has(name.toLowerCase()) || numbers.has(preset)) continue;
-        names.add(name.toLowerCase()); numbers.add(preset); out.push({ name, preset });
+        const name = String((p && p.name) || '').trim().slice(0, 40);
+        if (!name || names.has(name.toLowerCase())) continue;
+        if (whole(p.pan, -32768, 32767) && whole(p.tilt, -32768, 32767)) out.push({ name, pan: p.pan, tilt: p.tilt, zoom: whole(p.zoom, 0, 65535) ? p.zoom : null });
+        else if (whole(p.preset, 0, 127) && !numbers.has(p.preset)) { numbers.add(p.preset); out.push({ name, preset: p.preset }); }
+        else continue;
+        names.add(name.toLowerCase());
     }
     return out;
 }
@@ -128,10 +148,21 @@ class Ptz {
     stop(host) { const ok = this._send(host, visca.move(0, 0)); this._send(host, visca.zoom(0)); this._hold(host, false); return ok; }
     home(host) { return this._send(host, visca.home()); }
     preset(host, n, save) { return this._send(host, visca.preset(n, save)); }
-    /** Where the camera points now, { pan, tilt } in its own units, or null. */
-    async where(host) { const info = this.known.get(host)?.info; return info ? position(await ask(host, info, visca.positionInquiry())) : null; }
+    /** Where the camera points now, { pan, tilt, zoom } in its own units (zoom null if it will not say), or null. */
+    async where(host) {
+        const info = this.known.get(host)?.info; if (!info) return null;
+        const spot = position(await ask(host, info, visca.positionInquiry()));
+        return spot ? { ...spot, zoom: zoomOf(await ask(host, info, visca.zoomInquiry())) } : null;
+    }
+    /** Send the camera to a place read earlier with `where`. */
+    goTo(host, spot) {
+        const ok = this._send(host, visca.absolute(spot.pan, spot.tilt));
+        if (ok && Number.isInteger(spot.zoom)) this._send(host, visca.zoomTo(spot.zoom));
+        this._hold(host, false);
+        return ok;
+    }
     /** Stop everything that is moving and let the sockets go: on quit. */
     close() { for (const [host, link] of this.links) { if (link.timer) this.stop(host); clearTimeout(link.timer); try { link.socket.close(); } catch (e) { /* closed */ } } this.links.clear(); }
 }
 
-module.exports = { Ptz, detect, visca, frame, unframe, isVersion, position, allocatePreset, cleanPositions, HOLD_MS, PRESET_FIRST, PRESET_LAST };
+module.exports = { Ptz, detect, visca, frame, unframe, isVersion, position, zoomOf, allocatePreset, cleanPositions, HOLD_MS, PRESET_FIRST, PRESET_LAST };

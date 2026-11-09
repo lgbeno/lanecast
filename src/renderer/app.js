@@ -311,27 +311,31 @@
         const home = key('Home', 'Back to the camera’s home position', 'wide'); home.onclick = () => api.ptz.home(id).catch(showError);
         const gap = () => document.createElement('i');
         const moves = row(); moves.append(drive('◀', 'Pan left', -1, 0), drive('▲', 'Tilt up', 0, 1), drive('▼', 'Tilt down', 0, -1), drive('▶', 'Pan right', 1, 0), gap(), zoomKey('−', 'Zoom out', -1), zoomKey('+', 'Zoom in', 1), gap(), home, speed);
-        // Positions have names. Saving one stores where the camera points now; the number the camera keeps it under is the app's business.
+        // Positions have names. Saving one reads where the camera points and keeps that under the name, in the camera's record
+        // (so in the project): pressing it sends the camera back there. Edit… re-teaches one to where the camera points now, or removes it.
         const places = row('ptz-places'), form = row('ptz-save'); form.hidden = true;
         const input = document.createElement('input'); input.placeholder = 'Name this position, e.g. Finish line'; input.maxLength = 40; input.spellcheck = false;
-        const save = key('Save', 'Store where the camera points now under this name', 'wide primary'), cancel = key('Cancel', '', 'wide');
-        let names = [], removing = false;
-        const sync = () => { const hit = names.some(n => n.toLowerCase() === input.value.trim().toLowerCase()); save.textContent = hit ? 'Update' : 'Save'; save.disabled = !input.value.trim(); };
+        const save = key('Save', 'Store where the camera points now under this name', 'wide primary'), remove = key('Remove', 'Forget this position', 'wide ptzRemove'), cancel = key('Cancel', '', 'wide');
+        let names = [], editing = false, target = null;            // target: the position being re-taught or removed
+        const has = name => names.some(n => n.toLowerCase() === name.trim().toLowerCase());
+        const sync = () => { save.textContent = target ? 'Re-teach here' : has(input.value) ? 'Update' : 'Save'; save.disabled = !input.value.trim(); remove.hidden = !target; input.readOnly = !!target; };
+        const close = () => { form.hidden = true; target = null; };
         const draw = () => {
             const chips = names.map(name => {
-                const chip = key(removing ? '✕ ' + name : name, removing ? `Remove ${name}` : `Go to ${name}`, 'wide ptzPlace' + (removing ? ' removing' : '')); chip.dataset.position = name;
-                chip.onclick = async () => { try { if (removing) { await api.ptz.removePosition(id, name); await refreshCameras(); } else await api.ptz.goPosition(id, name); } catch (e) { showError(e); } };
+                const chip = key(name, editing ? `Re-teach ${name} to where the camera points now, or remove it` : `Go to ${name}`, 'wide ptzPlace' + (editing ? ' editing' : '')); chip.dataset.position = name;
+                chip.onclick = () => { if (editing) { target = name; input.value = name; form.hidden = false; sync(); } else api.ptz.goPosition(id, name).catch(showError); };
                 return chip;
             });
-            const add = key('+ Save position', 'Name where the camera points now, to come back to it', 'wide ptzAdd'); add.onclick = () => { form.hidden = false; input.value = ''; sync(); input.focus(); };
-            const edit = key(removing ? 'Done' : 'Remove…', 'Remove positions', 'wide ptzEdit'); edit.hidden = !names.length; edit.onclick = () => { removing = !removing; draw(); };
+            const add = key('+ Save position', 'Name where the camera points now, to come back to it', 'wide ptzAdd'); add.onclick = () => { target = null; input.value = ''; form.hidden = false; sync(); input.focus(); };
+            const edit = key(editing ? 'Done' : 'Edit…', 'Re-teach a position to where the camera points now, or remove it', 'wide ptzEdit'); edit.hidden = !names.length; edit.onclick = () => { editing = !editing; close(); draw(); };
             places.replaceChildren(...chips, add, edit);
         };
-        const commit = async () => { const name = input.value.trim(); if (!name) return; try { await api.ptz.savePosition(id, name); form.hidden = true; await refreshCameras(); } catch (e) { showError(e); } };
-        input.oninput = sync; save.onclick = commit; cancel.onclick = () => { form.hidden = true; };
-        input.addEventListener('keydown', e => { e.stopPropagation(); if (e.key === 'Enter') { e.preventDefault(); commit(); } else if (e.key === 'Escape') { e.preventDefault(); form.hidden = true; } });
-        form.append(input, save, cancel); root.append(moves, places, form); draw();
-        return { element: root, positions(list) { const next = list || []; if (next.join('|') !== names.join('|')) { names = [...next]; if (!names.length) removing = false; draw(); } } };
+        const commit = async () => { const name = input.value.trim(); if (!name) return; save.disabled = true; try { await api.ptz.savePosition(id, name); close(); await refreshCameras(); } catch (e) { showError(e); } sync(); };
+        input.oninput = sync; save.onclick = commit; cancel.onclick = close;
+        remove.onclick = async () => { if (!target) return; try { await api.ptz.removePosition(id, target); close(); await refreshCameras(); } catch (e) { showError(e); } };
+        input.addEventListener('keydown', e => { e.stopPropagation(); if (e.key === 'Enter') { e.preventDefault(); commit(); } else if (e.key === 'Escape') { e.preventDefault(); close(); } });
+        form.append(input, save, remove, cancel); root.append(moves, places, form); draw();
+        return { element: root, positions(list) { const next = list || []; if (next.join('|') !== names.join('|')) { names = [...next]; if (!names.length) editing = false; if (target && !has(target)) close(); draw(); } } };
     }
     const tileSteering = new Map();                 // camera id -> the controls on its tile
     /** A camera showing its real picture that has said it can be steered. */

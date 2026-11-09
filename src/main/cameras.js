@@ -149,25 +149,32 @@ class CameraEngine {
         if (before.url !== c.url) { await this._tell('DELETE', before); await this._tell('PUT', c); }
         return this.describe(c);
     }
-    // Named positions of a camera that can be steered. The name is the person's; the camera's preset number behind it is
-    // chosen here and travels with the camera's record (and so with the project).
+    // Named positions of a camera that can be steered. The name is the person's. Under it is kept where the camera said it
+    // was pointing, { pan, tilt, zoom }, so the position travels in the camera's record (and so in the project) and nothing
+    // lives in the camera; or, for a camera that will not say where it points, one of its own preset numbers, chosen here.
     _position(c, name) { const key = String(name || '').trim().toLowerCase(); return (c.positions || []).find(p => p.name.toLowerCase() === key) || null; }
-    /** Remember a position under `name`: a new one, or an existing name to be pointed somewhere else. Returns the preset number to store it in. */
-    savePosition(id, name) {
+    /** Remember a position under `name`: a new one, or an existing name re-taught. `spot` is where the camera points,
+     *  { pan, tilt, zoom }, or null if it would not say, in which case a preset number is given to it. Returns the record. */
+    savePosition(id, name, spot = null) {
         const c = this.find(id); name = String(name || '').trim().slice(0, 40);
         if (!name) throw new Error('Give the position a name');
         c.positions ||= [];
-        let position = this._position(c, name);
-        if (!position) {
-            const preset = allocatePreset(c.positions);
-            if (preset === null) throw new Error('This camera has as many positions as it can hold; remove one first');
-            position = { name, preset }; c.positions.push(position);
+        const had = this._position(c, name), position = had || { name };
+        if (spot) { delete position.preset; position.pan = spot.pan; position.tilt = spot.tilt; position.zoom = Number.isInteger(spot.zoom) ? spot.zoom : null; }
+        else {
+            delete position.pan; delete position.tilt; delete position.zoom;
+            if (!Number.isInteger(position.preset)) {
+                const preset = allocatePreset(c.positions);
+                if (preset === null) throw new Error('This camera has as many positions as it can hold; remove one first');
+                position.preset = preset;
+            }
         }
+        if (!had) c.positions.push(position);
         this._save();
-        return position.preset;
+        return { ...position };
     }
-    /** The preset number behind a position's name, or null when the camera has no position of that name. */
-    positionPreset(id, name) { const p = this._position(this.find(id), name); return p ? p.preset : null; }
+    /** What is kept under a position's name, { name, pan, tilt, zoom } or { name, preset }, or null when the camera has none of that name. */
+    position(id, name) { const p = this._position(this.find(id), name); return p ? { ...p } : null; }
     removePosition(id, name) { const c = this.find(id), p = this._position(c, name); if (!p) return false; c.positions = c.positions.filter(x => x !== p); this._save(); return true; }
     /** The stand-in picture for a simulated camera: a photo or video file, or none. */
     async setMedia(id, file) {
