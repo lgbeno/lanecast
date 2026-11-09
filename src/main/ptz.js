@@ -33,6 +33,8 @@ const visca = {
     absolute: (pan, tilt) => [0x81, 0x01, 0x06, 0x02, 0x18, 0x14, ...nibbles(pan), ...nibbles(tilt), 0xff],
     /** Go to a zoom read earlier from the zoom inquiry. */
     zoomTo: zoom => [0x81, 0x01, 0x04, 0x47, ...nibbles(zoom), 0xff],
+    /** Send the lens to a zoom and a focus in one go: the camera zooms and comes to rest at that focus. Manual focus only. */
+    zoomFocusTo: (zoom, focus) => [0x81, 0x01, 0x04, 0x47, ...nibbles(zoom), ...nibbles(focus), 0xff],
     focusInquiry: () => [0x81, 0x09, 0x04, 0x48, 0xff],
     focusModeInquiry: () => [0x81, 0x09, 0x04, 0x38, 0xff],
     /** Autofocus on, or off (manual focus). */
@@ -126,6 +128,8 @@ async function detect(host) {
 
 const HOLD_MS = 900;            // a drive not renewed within this is stopped
 const ARRIVE_POLL_MS = 250, ARRIVE_TRIES = 40, FOCUS_TAKES_MS = 700;      // watching a camera arrive, then letting the lens reach its focus
+const ARRIVE_LIMIT_MS = 10000;  // how long to wait for a camera to say its move and its lens are done
+const ARRIVE_LOOK_AFTER_MS = 1500, ARRIVE_LOOK_EVERY_MS = 500;      // if it has not said so by then, look for ourselves this often
 const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
 class Ptz {
     constructor() { this.known = new Map(); this.links = new Map(); }
@@ -144,6 +148,12 @@ class Ptz {
         if (!link) {
             link = { socket: dgram.createSocket('udp4'), info, sequence: 0, timer: null };
             link.socket.on('error', () => {}); link.socket.unref();
+            // The camera says when each thing asked of it is done (90 5x ff) or refused (90 6x .. ff): a move with its focus waits on these.
+            link.socket.on('message', buf => {
+                const job = link.focus, message = unframe(buf); if (!job || !message) return;
+                if ((message[1] & 0xf0) === 0x50 && message.length === 3) job.done++;
+                else if ((message[1] & 0xf0) === 0x60) { job.failed = true; job.done++; }
+            });
             if (info.framed) link.socket.send(RESET, info.port, host, () => {});
             this.links.set(host, link);
         }
@@ -173,22 +183,53 @@ class Ptz {
         if (lens) { spot.focus = zoomOf(await ask(host, info, visca.focusInquiry())); spot.focusAuto = focusAutoOf(await ask(host, info, visca.focusModeInquiry())) !== false; }
         return spot;
     }
-    /** Send the camera to a place read earlier with `where`. If its focus was read too, the lens is put to it on arrival. */
+    /** Send the camera to a place read earlier with `where`. With its focus read too, it gets there sharp: the lens is sent to its
+     *  zoom and its focus in one command as the camera sets off, in manual focus so nothing hunts on the way, and autofocus is handed
+     *  back (if the position was saved in autofocus) once the camera says the move and the lens are done. */
     goTo(host, spot) {
         this._leaveFocus(host);
-        const ok = this._send(host, visca.absolute(spot.pan, spot.tilt));
-        if (ok && Number.isInteger(spot.zoom)) this._send(host, visca.zoomTo(spot.zoom));
+        const link = this._link(host); if (!link) return false;
+        if (Number.isInteger(spot.focus) && Number.isInteger(spot.zoom)) {
+            const job = link.focus = { manual: true, auto: spot.focusAuto !== false, done: 0, failed: false };
+            this._send(host, visca.focusMode(false)); this._send(host, visca.absolute(spot.pan, spot.tilt)); this._send(host, visca.zoomFocusTo(spot.zoom, spot.focus));
+            this._hold(host, false);
+            this._arrive(host, link, job, spot);
+            return true;
+        }
+        this._send(host, visca.absolute(spot.pan, spot.tilt));
+        if (Number.isInteger(spot.zoom)) this._send(host, visca.zoomTo(spot.zoom));
         this._hold(host, false);
-        if (ok && Number.isInteger(spot.focus)) this._focusOnArrival(host, spot);
-        return ok;
+        if (Number.isInteger(spot.focus)) this._focusOnArrival(host, spot, false);
+        return true;
     }
-    /** Put the lens to the position's focus once the camera has arrived. A camera refuses a focus position while it is zooming, and
-     *  takes one only in manual focus: so wait until it has stopped, switch to manual, set the focus, and (if the position was saved
-     *  while the camera focused by itself) hand back to autofocus, which then starts from sharp. Anything else asked of the camera
-     *  meanwhile calls this off (see _leaveFocus). */
-    async _focusOnArrival(host, spot) {
+    /** Wait for the camera to finish what goTo asked (three things: manual focus, the move, the lens), then hand back to autofocus. */
+    async _arrive(host, link, job, spot) {
+        let last = null;
+        for (let waited = 0; waited < ARRIVE_LIMIT_MS && job.done < 3 && !job.failed; waited += 50) {
+            await wait(50);
+            if (link.focus !== job) return;
+            // The camera's "done" messages can go missing (a busy camera drops them). So after a while, also look: two readings that agree mean it has arrived.
+            if (waited >= ARRIVE_LOOK_AFTER_MS && waited % ARRIVE_LOOK_EVERY_MS === 0) {
+                const now = await this.where(host);
+                if (link.focus !== job) return;
+                if (now && last && now.pan === last.pan && now.tilt === last.tilt && now.zoom === last.zoom) break;
+                last = now;
+            }
+        }
+        if (link.focus !== job) return;                                                // called off: _leaveFocus has put autofocus back
+        if (job.failed) {
+            // This camera does not take the zoom and the focus together. Zoom by itself, and set the focus once it has stopped.
+            this._send(host, visca.zoomTo(spot.zoom));
+            return this._focusOnArrival(host, spot, true);
+        }
+        link.focus = null;
+        if (job.auto) this._send(host, visca.focusMode(true));
+    }
+    /** The slower way, for a camera that takes a focus position only by itself and at rest: wait until it has stopped (two readings
+     *  that agree), switch to manual, set the focus, and hand back to autofocus if the position was saved in it. */
+    async _focusOnArrival(host, spot, manualAlready) {
         const link = this.links.get(host); if (!link) return;
-        const job = link.focus = { manual: false, auto: spot.focusAuto !== false };
+        const job = link.focus = { manual: !!manualAlready, auto: spot.focusAuto !== false, done: 0, failed: false };
         let last = null;
         for (let i = 0; i < ARRIVE_TRIES; i++) {
             await wait(ARRIVE_POLL_MS);
@@ -212,7 +253,14 @@ class Ptz {
         if (job.manual && job.auto) this._send(host, visca.focusMode(true));
     }
     /** Stop everything that is moving and let the sockets go: on quit. */
-    close() { for (const [host, link] of this.links) { this._leaveFocus(host); if (link.timer) this.stop(host); clearTimeout(link.timer); try { link.socket.close(); } catch (e) { /* closed */ } } this.links.clear(); }
+    close() {
+        for (const [host, link] of this.links) {
+            this._leaveFocus(host); if (link.timer) this.stop(host); clearTimeout(link.timer);
+            // What was just sent (autofocus back, a stop) leaves a moment later, not at once: close the socket after it has gone.
+            const socket = link.socket; setTimeout(() => { try { socket.close(); } catch (e) { /* closed */ } }, 200);
+        }
+        this.links.clear();
+    }
 }
 
 module.exports = { Ptz, detect, visca, frame, unframe, isVersion, position, zoomOf, focusAutoOf, allocatePreset, cleanPositions, HOLD_MS, PRESET_FIRST, PRESET_LAST };
