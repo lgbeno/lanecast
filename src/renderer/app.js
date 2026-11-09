@@ -30,6 +30,9 @@
 
     const showError = e => { $('error').hidden = false; $('error').textContent = (e.message || String(e)).replace(/^Error invoking remote method '[^']+': (Error: )?/, ''); };
     const hideError = () => { $('error').hidden = true; };
+    // Nothing fails silently: an error thrown anywhere in the window shows in the line under the tabs, instead of leaving
+    // the page quietly half drawn (a tab label that no longer follows, a list that stops updating).
+    window.addEventListener('error', e => showError(e.error || new Error(e.message)));
     const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
 
     // ---- timer ---------------------------------------------------------------------------
@@ -711,6 +714,7 @@
     $('cameraPanelSelect').onchange = e => { panelCamera = e.target.value; renderCameraPanel(); };
 
     function render() {
+        $('camerasLabel').textContent = cameraList.length > 1 ? 'Cameras' : 'Camera';         // one camera, or several
         renderCameraPanel();
         const camerasLive = renderCameras();
         const ready = {
@@ -729,7 +733,6 @@
         }
         $('liveBadge').hidden = !live;
         for (const toggle of document.querySelectorAll('.simToggle')) toggle.checked = !!sim[toggle.dataset.part];
-        $('camerasLabel').textContent = cameraList.length > 1 ? 'Cameras' : 'Camera';
         // Timer: only what the console sends, and, when simulated, the console's own controls.
         $('event').textContent = `${latest.event ?? '—'} / ${latest.heat ?? '—'}`;
         $('clock').textContent = latest.clock || '—:—.—';
@@ -1005,7 +1008,11 @@
         for (const role of ROLES) if (!sim[PART_OF[role]] && remembered[role] && ports[role].some(p => p.path === remembered[role]) && links[role].state === 'closed') connect(role, remembered[role]);
         setInterval(refreshPorts, 3000);
         setInterval(refreshCameras, 3000);
-        setInterval(() => { if (connected('timer')) latest = decoder.snapshot(performance.now() - timerStart); publish(); render(); }, 100);
+        // Ten times a second: read the console, tell the theme, redraw. A failure in one must not stop the others.
+        setInterval(() => {
+            try { if (connected('timer')) latest = decoder.snapshot(performance.now() - timerStart); publish(); } catch (e) { showError(e); }
+            render();
+        }, 100);
         render();
     }
     init().catch(showError);

@@ -40,22 +40,33 @@
             return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
         };
     }
-    /** A winning time for a simulated race, from the distance in the event title: 15 s for a 25 or 50, 20 s for a
-     *  100, 30 s for anything 200 and up. Nobody watching a simulation wants to sit through real race times. */
-    function secondsFor(title) {
-        // The distance is a number that is not part of an age range such as 13-14 or 9-10.
+    /** The race distance in an event's title: the number that is not part of an age range such as 13-14 or 9-10. 50 if there is none. */
+    function distanceOf(title) {
         const numbers = Array.from(String(title || '').matchAll(/(?<![\d-])(\d{2,4})(?![\d-])/g), m => Number(m[1]));
-        const distance = numbers.find(n => n >= 25 && n <= 1650) || 50;
-        return Math.min(30, Math.max(15, Math.round(10 + distance / 10)));
+        return numbers.find(n => n >= 25 && n <= 1650) || 50;
     }
-    /** Each swimmer's split, final time and place for one heat: the meet's entries, or six made-up swimmers. */
+    /** How many 50s a race has. A pool takes a time at every 50: all but the last are splits, the last is the finish.
+     *  So a 200 shows three splits and a finish, a 100 one split and a finish, a 50 or a 25 the finish alone. */
+    const fifties = distance => Math.max(1, Math.round(distance / 50));
+    /** A winning time for a simulated race, from the distance in the event title: 15 s for a 25 or 50, 20 s for a
+     *  100, 30 s for a 200. Nobody watching a simulation wants to sit through real race times. Longer races get four
+     *  seconds a 50, so their splits can still be told apart, up to a minute. */
+    function secondsFor(title) {
+        const distance = distanceOf(title), short = Math.min(30, Math.max(15, Math.round(10 + distance / 10)));
+        return Math.min(60, Math.max(short, 4 * fifties(distance)));
+    }
+    /** Each swimmer's splits, final time and place for one heat: the meet's entries, or six made-up swimmers. */
     function planLanes(meet, event, heat) {
         const e = meet.find(m => m.event === event), entries = e?.heats[heat - 1] || [null, 1, 1, 1, 1, 1, 1, null];
-        const seconds = e?.seconds || secondsFor(e?.title), random = rng(event * 100 + heat);
+        const seconds = e?.seconds || secondsFor(e?.title), random = rng(event * 100 + heat), laps = fifties(distanceOf(e?.title));
         const lanes = Array.from({ length: LANES }, (_, i) => {
             if (!entries[i]) return null;
-            const final = Math.round(seconds * 100 * (1 + random() * 0.18));
-            return { final, split: Math.round(final * (0.46 + random() * 0.03)), place: 0 };
+            const final = Math.round(seconds * 100 * (1 + random() * 0.18)), pace = random();
+            // A split at every 50 but the last. Even pace, the early 50s a touch quicker (the dive, fresh arms), each swimmer a little different.
+            const early = (0.08 - 0.05 * pace) / laps;         // how much of a 50 the early ones are quicker by
+            const splits = Array.from({ length: laps - 1 }, (_, k) => Math.round(final * ((k + 1) / laps - early * (1 - (k + 1) / laps))));
+            // A split stays on the lane for a few seconds, but never into the next one.
+            return { final, splits, hold: Math.max(120, Math.min(SPLIT_HOLD, Math.round(0.6 * final / laps))), place: 0 };
         });
         const order = lanes.filter(Boolean).sort((a, b) => a.final - b.final);
         order.forEach((l, i) => { if (i && l.final <= order[i - 1].final) l.final = order[i - 1].final + 1; l.place = i + 1; });
@@ -142,8 +153,11 @@
                 const cs = tenths * 10;
                 if (!l || phase === 'lineup') return {};
                 if (cs >= l.final) return { time: l.final, place: l.place };
+                // The latest split, while it is fresh; then the lane goes back to the running clock until the next 50.
                 // Splits are shown without a place. A real console may rank them.
-                if (cs >= l.split && cs < l.split + SPLIT_HOLD) return { time: l.split };
+                let split = null;
+                for (const s of l.splits) { if (cs >= s) split = s; else break; }
+                if (split !== null && cs < split + l.hold) return { time: split };
                 return { universal: true };
             });
             return { heat, phase, tenths, lanes };
@@ -247,5 +261,5 @@
         return meet;
     }
 
-    return { MEET, LANES, TICK, LINEUP, AFTER, RESULTS, LINE_BUDGET, TimerSource, MeetManager, generateMeet, secondsFor };
+    return { MEET, LANES, TICK, LINEUP, AFTER, RESULTS, LINE_BUDGET, TimerSource, MeetManager, generateMeet, secondsFor, distanceOf, fifties };
 });
