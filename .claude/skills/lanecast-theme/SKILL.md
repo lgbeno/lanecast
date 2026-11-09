@@ -7,6 +7,8 @@ description: Make or change a Lanecast theme — the graphics drawn over a swim-
 
 A theme is a folder: `theme.json`, `overlay.html` (drawn over the picture), optionally `control.html` (a panel in the Stream tab), plus any css/js/images. Read `docs/themes.md` in the Lanecast repository for the full message reference; this is the short form.
 
+Longer forms of this, for when you need them: `docs/agents/making-a-theme.md` (the brief), `docs/agents/theme-messages.md` (every message, with examples), `docs/agents/theme-cookbook.md` (working code). To see a theme without the app: open `themes/preview.html?theme=<folder>` (it sits beside the user's own themes too), and look at `&at=lineup`, `&at=racing` and `&at=results`.
+
 ## Start
 
 - A new theme: the user presses **New theme…** on the Theme tab and names it (that copies `themes/template/` into their themes folder and switches to it), then **Open folder** shows where it is. Or copy `themes/template/` there yourself and give it a name in `theme.json`.

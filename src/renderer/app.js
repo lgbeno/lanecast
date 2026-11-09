@@ -604,7 +604,7 @@
     // ---- theme ---------------------------------------------------------------------------
     // The theme's overlay page runs in a frame over the picture, its control page in a box in the deck.
     // Both get the state and the events; either may direct the picture or talk to the other.
-    const themes = { list: [], active: null, activeId: null, ready: { overlay: false, control: false }, log: [] };
+    const themes = { list: [], active: null, activeId: null, ready: { overlay: false, control: false }, log: [], unknown: new Set() };
     const frames = { overlay: $('overlayFrame'), control: $('controlFrame'), dialog: $('dialogFrame') };
     const toFrame = (which, message) => { if (themes.ready[which]) frames[which].contentWindow?.postMessage(message, '*'); };
     const toTheme = message => { for (const which of Object.keys(frames)) toFrame(which, message); };
@@ -628,7 +628,7 @@
     $('themeDialog').addEventListener('close', () => { frames.dialog.src = 'about:blank'; themes.ready.dialog = false; });
     function loadTheme(theme) {
         closeThemeDialog();
-        themes.active = theme; themes.ready = { overlay: false, control: false, dialog: false };
+        themes.active = theme; themes.ready = { overlay: false, control: false, dialog: false }; themes.unknown = new Set();
         loadThemeSettings();
         frames.overlay.src = theme ? `${theme.url}${theme.overlay}?role=overlay` : 'about:blank';
         $('drawerToggle').hidden = !theme?.control;
@@ -656,7 +656,15 @@
                 toFrame(from, { type: 'hello', theme: { id: themes.active?.id, name: themes.active?.name }, size: { width: $('stage').clientWidth, height: $('stage').clientHeight }, settings: themeSettings });
                 if (lastSent) toFrame(from, JSON.parse(lastSent));
                 renderThemes(); render(); break;
-            case 'camera': { const cam = cameraByRef(m.select); if (cam) { programCamera = cam.id; lastSent = ''; render(); } break; }
+            case 'camera': {
+                const cam = cameraByRef(m.select);
+                if (cam) { programCamera = cam.id; lastSent = ''; render(); }
+                else if (!themes.unknown.has(String(m.select))) {                  // said once a name, not every race
+                    themes.unknown.add(String(m.select));
+                    themes.log.push(`${new Date().toLocaleTimeString()} ${from}: no camera named ${JSON.stringify(m.select)} (ignored)`); if (themes.log.length > 60) themes.log.shift(); renderThemes();
+                }
+                break;
+            }
             case 'position': {
                 // Steer a camera to a position the person saved under that name: the program camera, unless the theme names another.
                 const cam = m.camera === undefined || m.camera === null ? cameraList.find(c => c.id === programCameraId()) : cameraByRef(m.camera);

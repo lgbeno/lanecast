@@ -76,6 +76,7 @@ app.whenReady().then(async () => {
     session.defaultSession.setPermissionRequestHandler((contents, permission, callback) => callback(allowed.has(permission)));
     session.defaultSession.setPermissionCheckHandler((contents, permission) => allowed.has(permission));
     themes = new Themes({ userDir: path.join(app.getPath('userData'), 'themes') });
+    await themes.ensureKit();                     // the runtime and the preview page, beside the user's themes
     await themes.list();
     // Themes are followed on disk: one being edited is redrawn as it is saved, and the list keeps up with the folder.
     stopThemeWatch = themes.watch(ids => send('themes:changed', ids));

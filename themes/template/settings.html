@@ -42,7 +42,7 @@ button { background: #1e3041; border: 1px solid #3c5266; border-radius: 6px; col
 <div class="row"><label>Meet name</label><input type="text" id="meet" placeholder="Shown above the lower third, if set"></div>
 <h2>LOGO</h2>
 <div class="row logo"><img id="logoPreview" alt=""><input type="file" id="logoFile" accept="image/png,image/svg+xml,image/jpeg,image/webp"><button id="logoClear" type="button">Remove</button></div>
-<p class="note">Logos are saved into the theme's settings as data; keep them under a few hundred kilobytes.</p>
+<p class="note" id="logoNote">Logos are saved into the theme's settings as data; keep them under a few hundred kilobytes.</p>
 <div class="foot"><button id="cancel" type="button">Cancel</button><button id="save" type="button" class="primary">Save</button></div>
 
 <script src="../lanecast-theme.js"></script>
@@ -58,7 +58,9 @@ button { background: #1e3041; border: 1px solid #3c5266; border-radius: 6px; col
   Lanecast.on('settings', s => { if (s.accent) $('accent').value = s.accent; $('meet').value = s.meet || ''; logo = s.logo || ''; $('logoPreview').src = logo; mark(); });
   $('logoFile').onchange = () => {
     const file = $('logoFile').files[0]; if (!file) return;
-    if (file.size > 400 * 1024) { alert('That image is over 400 KB; a smaller one, please.'); $('logoFile').value = ''; return; }
+    // No alert() here: a theme's pages cannot open the browser's own boxes. Say it in the page instead.
+    if (file.size > 400 * 1024) { $('logoNote').textContent = 'That image is over 400 KB; a smaller one, please.'; $('logoFile').value = ''; return; }
+    $('logoNote').textContent = 'Logos are saved into the theme\'s settings as data; keep them under a few hundred kilobytes.';
     const reader = new FileReader(); reader.onload = () => { logo = reader.result; $('logoPreview').src = logo; }; reader.readAsDataURL(file);
   };
   $('logoClear').onclick = () => { logo = ''; $('logoPreview').src = ''; $('logoFile').value = ''; };
