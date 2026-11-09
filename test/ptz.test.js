@@ -41,6 +41,7 @@ test('positions have names; under each is where the camera pointed, or a preset 
     assert.equal(hex(P.visca.focusInquiry()), '81090448ff'); assert.equal(hex(P.visca.focusModeInquiry()), '81090438ff');
     assert.equal(hex(P.visca.focusMode(true)), '8101043802ff'); assert.equal(hex(P.visca.focusMode(false)), '8101043803ff');
     assert.equal(hex(P.visca.focusTo(17975)), '810104480406030' + '7ff', 'as a real camera reported it: focus 0x4637');
+    assert.equal(hex(P.visca.zoomFocusTo(15694, 14840)), '8101044703' + '0d040e0309' + '0f08ff', 'zoom 0x3d4e and focus 0x39f8 in one command');
     assert.equal(P.zoomOf(P.unframe(Buffer.from('905004060307ff', 'hex'))), 17975, 'the focus answer reads like the zoom one');
     assert.equal(P.focusAutoOf(P.unframe(Buffer.from('905002ff', 'hex'))), true); assert.equal(P.focusAutoOf(P.unframe(Buffer.from('905003ff', 'hex'))), false); assert.equal(P.focusAutoOf(P.unframe(Buffer.from('9041ff', 'hex'))), null);
     assert.equal(P.allocatePreset([]), 10, 'the first preset given out is 10: 0 to 9 are left to the camera’s own remote');
@@ -75,8 +76,15 @@ test('positions have names; under each is where the camera pointed, or a preset 
 const camera = () => new Promise(resolve => {
     const socket = dgram.createSocket('udp4'), got = [];
     const ANSWERS = { '81090002ff': '905002010607101501ff', '81090612ff': '90500001020300000405ff', '81090447ff': '905001020304ff', '81090448ff': '90500a0b0c0dff', '81090438ff': '905002ff' };     // version; pan 0x0123 tilt 0x0045; zoom 0x1234; focus 0xabcd; autofocus
-    socket.on('message', (buf, from) => { const hex = buf.toString('hex'); if (ANSWERS[hex]) socket.send(Buffer.from(ANSWERS[hex], 'hex'), from.port, from.address); else got.push(hex); });       // questions are answered; everything else is noted
-    socket.bind(1259, '127.0.0.1', () => resolve({ got, close: () => new Promise(done => socket.close(done)) }));
+    const cam = { got, slow: 0, refuse: false, close: () => new Promise(done => socket.close(done)) };
+    socket.on('message', (buf, from) => {
+        const hex = buf.toString('hex'), reply = text => { try { socket.send(Buffer.from(text, 'hex'), from.port, from.address); } catch (e) { /* closed */ } };
+        if (ANSWERS[hex]) return reply(ANSWERS[hex]);                                    // questions are answered
+        got.push(hex);                                                                  // everything else is noted,
+        if (cam.refuse && hex.startsWith('81010447') && hex.length === 26) return reply('906141ff');          // (a camera that will not take zoom and focus together)
+        reply('9041ff'); setTimeout(() => reply('9051ff'), cam.slow);                   // acknowledged, and reported done
+    });
+    socket.bind(1259, '127.0.0.1', () => resolve(cam));
     socket.on('error', () => resolve(null));                                  // the port is taken: skip
 });
 const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
@@ -99,28 +107,36 @@ test.later = (async () => {
         ptz.preset('127.0.0.1', 2); ptz.home('127.0.0.1'); await wait(40);
         assert.deepEqual(cam.got.slice(-2), ['8101043f0202ff', '81010604ff']);
         console.log('PASS a camera is found by its version answer; a drive not renewed is stopped; release, presets and home are sent');
-        // Where it points is read with its lens, and going back puts the focus there once the camera has arrived, then autofocus again.
+        // Where it points is read with its lens. Going back, the camera sets off with the move and with zoom and focus in one command, in
+        // manual focus; when it says all three are done, autofocus is handed back.
+        const MOVE = '8101060218140001020300000405ff', LENS = '81010447010203040a0b0c0dff', MANUAL = '8101043803ff', AUTO = '8101043802ff';
         const spot = await ptz.where('127.0.0.1', true);
         assert.deepEqual(spot, { pan: 0x0123, tilt: 0x0045, zoom: 0x1234, focus: 0xabcd, focusAuto: true });
         assert.deepEqual(await ptz.where('127.0.0.1'), { pan: 0x0123, tilt: 0x0045, zoom: 0x1234 }, 'the lens is only asked for when wanted');
-        let mark = cam.got.length; ptz.goTo('127.0.0.1', spot); await wait(120);
-        assert.deepEqual(cam.got.slice(mark), ['8101060218140001020300000405ff', '8101044701020304ff'], 'first the move and the zoom: the lens takes no focus while it travels');
-        await wait(700);
-        assert.deepEqual(cam.got.slice(mark + 2), ['8101043803ff', '810104480a0b0c0dff'], 'arrived (two readings the same): manual focus, and the focus it was saved at');
-        await wait(900);
-        assert.deepEqual(cam.got.slice(mark + 4), ['8101043802ff'], 'then autofocus again, starting from sharp');
+        cam.slow = 500;
+        let mark = cam.got.length; ptz.goTo('127.0.0.1', spot); await wait(200);
+        assert.deepEqual(cam.got.slice(mark), [MANUAL, MOVE, LENS], 'it sets off with everything at once: manual focus, the move, and zoom with focus');
+        await wait(600);
+        assert.deepEqual(cam.got.slice(mark + 3), [AUTO], 'and when the camera says they are done, autofocus again: it arrived sharp');
         // Saved while focused by hand: it stays in manual.
-        mark = cam.got.length; ptz.goTo('127.0.0.1', { ...spot, focusAuto: false }); await wait(2300);
-        assert.deepEqual(cam.got.slice(mark), ['8101060218140001020300000405ff', '8101044701020304ff', '8101043803ff', '810104480a0b0c0dff'], 'a position saved in manual focus leaves the camera in manual');
-        // Steered away before it arrived: the focus is dropped. Steered away while the lens was being set: autofocus is put back.
-        mark = cam.got.length; ptz.goTo('127.0.0.1', spot); await wait(100); ptz.move('127.0.0.1', 1, 0); await wait(60); ptz.stop('127.0.0.1'); await wait(1900);
-        assert.deepEqual(cam.got.slice(mark + 2), ['8101060118010203ff', '8101060101010303ff', '8101040700ff'], 'driven off before arriving: no focus is set afterwards');
-        mark = cam.got.length; ptz.goTo('127.0.0.1', spot); await wait(900); ptz.home('127.0.0.1'); await wait(1200);
-        assert.deepEqual(cam.got.slice(mark + 2), ['8101043803ff', '810104480a0b0c0dff', '8101043802ff', '81010604ff'], 'sent elsewhere while the lens was being set: autofocus is put back first, never left in manual');
+        mark = cam.got.length; ptz.goTo('127.0.0.1', { ...spot, focusAuto: false }); await wait(1000);
+        assert.deepEqual(cam.got.slice(mark), [MANUAL, MOVE, LENS], 'a position saved in manual focus leaves the camera in manual');
+        // Steered away on the way: autofocus is put back at once, never left in manual on our account.
+        mark = cam.got.length; ptz.goTo('127.0.0.1', spot); await wait(100); ptz.move('127.0.0.1', 1, 0); await wait(60); ptz.stop('127.0.0.1'); await wait(900);
+        assert.deepEqual(cam.got.slice(mark + 3), [AUTO, '8101060118010203ff', '8101060101010303ff', '8101040700ff'], 'driven off on the way: autofocus first, then the drive, and nothing more afterwards');
+        // The camera's "done" messages going missing does not strand it: it is seen to have stopped (two readings that agree).
+        cam.slow = 60000; mark = cam.got.length; ptz.goTo('127.0.0.1', spot); await wait(3100);
+        assert.deepEqual(cam.got.slice(mark), [MANUAL, MOVE, LENS, AUTO], 'never told it was done, the app looks for itself and hands autofocus back');
+        // A camera that will not take zoom and focus together: zoom by itself, then the focus once it has stopped, then autofocus.
+        cam.slow = 0; cam.refuse = true; mark = cam.got.length; ptz.goTo('127.0.0.1', spot); await wait(250);
+        assert.deepEqual(cam.got.slice(mark), [MANUAL, MOVE, LENS, '8101044701020304ff'], 'refused: the zoom is sent by itself');
+        await wait(2000);
+        assert.deepEqual(cam.got.slice(mark + 4), [MANUAL, '810104480a0b0c0dff', AUTO], 'and once stopped, the focus, then autofocus');
+        cam.refuse = false;
         // A position saved before focus was kept just moves.
-        mark = cam.got.length; ptz.goTo('127.0.0.1', { pan: 0x0123, tilt: 0x0045, zoom: 0x1234, focus: null }); await wait(1600);
-        assert.deepEqual(cam.got.slice(mark), ['8101060218140001020300000405ff', '8101044701020304ff']);
-        console.log('PASS a position is read with its focus; going back sets the focus on arrival and hands back to autofocus, unless steered away');
+        mark = cam.got.length; ptz.goTo('127.0.0.1', { pan: 0x0123, tilt: 0x0045, zoom: 0x1234, focus: null }); await wait(900);
+        assert.deepEqual(cam.got.slice(mark), [MOVE, '8101044701020304ff']);
+        console.log('PASS a position is read with its focus; going back it sets off with zoom and focus together and arrives sharp; autofocus is always handed back');
     } finally { ptz.close(); await cam.close(); }
 })();
 test.later.then(() => console.log(`${test.count()} ptz test groups passed (and the stand-in camera)`), e => { console.error('FAIL the stand-in camera'); console.error(e); process.exitCode = 1; });
