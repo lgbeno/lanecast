@@ -60,13 +60,13 @@
             list: async () => cameras.map(c => ({ ...c, local: /^device:/.test(c.url), producers: 1, consumers: 1 })),
             // Design mode: one camera that can be added, and one stranded in another network, as the real search reports them.
             openNetworkPrivacy: async () => false,
-            discover: async () => { await new Promise(resolve => setTimeout(resolve, 900)); return { notes: [], blocked: null,
+            discover: async () => { await new Promise(resolve => setTimeout(resolve, 2800)); return { notes: [], blocked: null,
                 adapters: [{ name: 'en0', label: 'Wi-Fi', address: '192.168.68.82', netmask: '255.255.252.0', selfAssigned: false }, { name: 'en5', label: 'USB LAN', address: '169.254.174.205', netmask: '255.255.0.0', selfAssigned: true }],
                 cameras: [
                     { name: 'Deck cam', address: '192.168.68.40', host: '', kinds: ['ONVIF'], ndi: '', diagnosis: { reach: 'same-network', adapter: { label: 'Wi-Fi' } }, rtsp: { url: 'rtsp://192.168.68.40/1', needsLogin: false }, explanation: 'Reachable on Wi-Fi.' },
                     { name: 'SWIMCAM', address: '192.168.1.88', host: 'SWIMCAM.local', kinds: ['NDI'], ndi: 'SWIMCAM (default,192.168.1.88)', rtsp: null,
-                        diagnosis: { reach: 'other-network', adapter: { label: 'USB LAN' }, fix: { address: '192.168.1.10', netmask: '255.255.255.0', command: 'networksetup -setmanual "USB LAN" 192.168.1.10 255.255.255.0', where: 'System Settings → Network → USB LAN → Details… → TCP/IP → Configure IPv4: Manually' } },
-                        explanation: 'The camera is at 192.168.1.88, and this computer has no address in 192.168.1.x: Wi-Fi is 192.168.68.82; USB LAN is 169.254.174.205 (self-assigned: plugged in, but nothing gives it an address). Set USB LAN to 192.168.1.10, subnet mask 255.255.255.0, router empty, then search again.' }
+                        diagnosis: { reach: 'other-network', adapter: { label: 'USB LAN' }, fix: { address: '192.168.1.10', netmask: '255.255.255.0', command: 'networksetup -setmanual "USB LAN" 192.168.1.10 255.255.255.0', where: 'System Settings → Network → USB LAN → Details… → TCP/IP → Configure IPv4: Manually', terminal: 'Open Terminal' } },
+                        explanation: 'This camera was found, but requires additional configuration to communicate.', detail: 'The camera is at 192.168.1.88, and this computer has no address in 192.168.1.x: Wi-Fi is 192.168.68.82; USB LAN is 169.254.174.205 (self-assigned: plugged in, but nothing gives it an address).' }
                 ] }; },
             add: async ({ name, url, simulate }) => { url = url || ''; if (!url && !simulate) throw new Error('Enter the camera’s address, or add it as simulated'); const camera = { id: 'cam-' + Date.now().toString(36), name: name || `Camera ${cameras.length + 1}`, url, simulate: !!simulate, media: null }; cameras.push(camera); saveCameras(); return camera; },
             update: async (id, patch) => { const c = cameras.find(x => x.id === id); if (!c) throw new Error('No such camera'); if (patch.name !== undefined) c.name = String(patch.name).trim() || c.name; if (patch.url !== undefined) c.url = String(patch.url).trim(); if (patch.simulate !== undefined) c.simulate = !!patch.simulate; if (!c.url && !c.simulate) c.simulate = true; saveCameras(); return c; },

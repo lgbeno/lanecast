@@ -230,7 +230,9 @@ function diagnose(address, list, via = [], platform = process.platform) {
             : `sudo ip addr add ${suggested}/24 dev ${adapter.name}`,
         where: platform === 'darwin' ? `System Settings → Network → ${name} → Details… → TCP/IP → Configure IPv4: Manually`
             : platform === 'win32' ? `Settings → Network & internet → ${name} → IP assignment → Edit → Manual → IPv4`
-            : `your network settings for ${name}: IPv4, Manual`
+            : `your network settings for ${name}: IPv4, Manual`,
+        // Where the command goes, in the words this system uses.
+        terminal: platform === 'darwin' ? 'Open Terminal' : platform === 'win32' ? 'Open Command Prompt as an administrator' : 'Open a terminal'
     };
     return { reach: 'other-network', adapter, fix };
 }
@@ -240,10 +242,15 @@ function explain(camera, list) {
     const steer = camera.ptz ? ' It can be steered from here: pan, tilt and zoom appear on its tile.' : '';
     if (d.reach === 'same-network') return camera.rtsp ? (camera.rtsp.needsLogin ? `Reachable on ${d.adapter.label}; it asks for a user name and password.` : `Reachable on ${d.adapter.label}.`) + steer
         : `On the same network as ${d.adapter.label}, but no video address answered. RTSP may be switched off in the camera, or on an unusual port.`;
+    // Found, but in another network. The person is told what to do (the window lays out the two ways); why is in detail().
+    return 'This camera was found, but requires additional configuration to communicate.';
+}
+/** Why a found camera cannot be reached, for anyone who wants the reason: which networks this computer is in, and which the camera is in. */
+function detail(camera, list) {
+    if (!camera.diagnosis || camera.diagnosis.reach !== 'other-network') return '';
     const nets = list.map(a => `${a.label} is ${a.address}${a.selfAssigned ? ' (self-assigned: plugged in, but nothing gives it an address)' : ''}`).join('; ');
     const net = camera.address.split('.').slice(0, 3).join('.');
-    return `The camera is at ${camera.address}, and this computer has no address in ${net}.x: ${nets || 'no adapter is connected'}. `
-        + `Set ${d.adapter ? d.adapter.label : 'the adapter it is plugged into'} to ${d.fix.address}, subnet mask ${d.fix.netmask}, router empty, then search again.`;
+    return `The camera is at ${camera.address}, and this computer has no address in ${net}.x: ${nets || 'no adapter is connected'}.`;
 }
 
 // ---- which RTSP address plays -----------------------------------------------------------
@@ -302,10 +309,10 @@ async function discover({ ms = 2600 } = {}) {
         camera.diagnosis = diagnose(camera.address, list, camera.via);
         camera.rtsp = camera.diagnosis.reach === 'same-network' ? await findRtsp(camera.address, camera.rtspPort || 554) : null;
         camera.ptz = camera.diagnosis.reach === 'same-network' ? !!(await require('./ptz').detect(camera.address)) : false;      // asks its version; moves nothing
-        camera.explanation = explain(camera, list);
+        camera.explanation = explain(camera, list); camera.detail = detail(camera, list);
     }));
     cameras.sort((a, b) => a.name.localeCompare(b.name));
     return { cameras, adapters: list, notes: mdns.notes, blocked: cameras.length ? null : blockedBy(mdns.heard), heard: mdns.heard };
 }
 
-module.exports = { discover, diagnose, explain, merge, adapters, blockedBy, decodePacket, encodeQuery, encodeName, Records, parseProbeMatch, rtspStatus, sameNetwork, TYPE, labelsOf };
+module.exports = { discover, diagnose, explain, detail, merge, adapters, blockedBy, decodePacket, encodeQuery, encodeName, Records, parseProbeMatch, rtspStatus, sameNetwork, TYPE, labelsOf };

@@ -84,7 +84,12 @@ test('a camera in another network is diagnosed with the adapter to set and what 
     assert.equal(D.diagnose('192.168.1.88', [wifi, usb], ['en5'], 'win32').fix.command, 'netsh interface ipv4 set address name="en5" static 192.168.1.10 255.255.255.0');
     assert.equal(D.diagnose('192.168.1.88', [wifi, usb], ['en5'], 'linux').fix.command, 'sudo ip addr add 192.168.1.10/24 dev en5');
     const text = D.explain({ address: '192.168.1.88', diagnosis: other, rtsp: null }, [wifi, usb]);
-    assert.match(text, /no address in 192\.168\.1\.x/); assert.match(text, /AX88179B is 169\.254\.174\.205 \(self-assigned/); assert.match(text, /Set AX88179B to 192\.168\.1\.10, subnet mask 255\.255\.255\.0/);
+    assert.equal(text, 'This camera was found, but requires additional configuration to communicate.', 'what to do, not a lesson in networking');
+    assert.equal(other.fix.terminal, 'Open Terminal'); assert.equal(D.diagnose('192.168.1.88', [wifi, usb], ['en5'], 'win32').fix.terminal, 'Open Command Prompt as an administrator'); assert.equal(D.diagnose('192.168.1.88', [wifi, usb], ['en5'], 'linux').fix.terminal, 'Open a terminal');
+    // The why is kept, for anyone who wants it (the window shows it when the message is pointed at).
+    const why = D.detail({ address: '192.168.1.88', diagnosis: other }, [wifi, usb]);
+    assert.match(why, /no address in 192\.168\.1\.x/); assert.match(why, /AX88179B is 169\.254\.174\.205 \(self-assigned/);
+    assert.equal(D.detail({ address: '192.168.70.15', diagnosis: same }, [wifi, usb]), '', 'nothing to explain about a camera that can be reached');
     assert.match(D.explain({ address: '192.168.70.15', diagnosis: same, rtsp: { url: 'rtsp://192.168.70.15/1', needsLogin: false } }, [wifi, usb]), /^Reachable on Wi-Fi\.$/);
     assert.match(D.explain({ address: '192.168.70.15', diagnosis: same, rtsp: { url: 'x', needsLogin: true } }, [wifi, usb]), /user name and password/);
     assert.match(D.explain({ address: '192.168.70.15', diagnosis: same, rtsp: null }, [wifi, usb]), /no video address answered/);

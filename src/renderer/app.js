@@ -492,15 +492,22 @@
             const { box, head } = item(camera.name, [camera.address || camera.host, camera.kinds.join(' + '), camera.ptz ? 'PTZ' : ''].filter(Boolean).join(' · '));
             if (camera.rtsp && camera.rtsp.needsLogin) adder(head, false, 'Add…', async () => openManual(camera.name, camera.rtsp.url.replace('rtsp://', 'rtsp://user:password@')));    // it wants a login: finish the address by hand
             else if (camera.rtsp) adder(head, cameraList.some(c => c.url === camera.rtsp.url), 'Add', async () => { await api.cameras.add({ name: camera.name, url: camera.rtsp.url }); await refreshCameras(); renderFound(); });
-            if (!camera.rtsp || camera.rtsp.needsLogin) box.append(el('p', 'small', camera.explanation));
             const fix = camera.diagnosis.fix;
-            if (fix && fix.command) {
-                const line = el('div', 'fix'), copy = el('button', '', 'Copy');
-                copy.type = 'button'; copy.title = 'Copy this command; run it in a terminal';
-                copy.onclick = async () => { try { await navigator.clipboard.writeText(fix.command); copy.textContent = 'Copied'; } catch (e) { copy.textContent = 'Select it'; } setTimeout(() => { copy.textContent = 'Copy'; }, 1500); };
-                line.append(el('code', '', fix.command), copy);
-                box.append(line, el('p', 'small', `Or by hand: ${fix.where}, IP address ${fix.address}, subnet mask ${fix.netmask}.`));
+            if (fix) {
+                // Found, but this computer cannot talk to it yet. No lesson in networking: just the two ways to put it right.
+                const lead = el('p', 'small', camera.explanation + ' To fix this you may:'); if (camera.detail) lead.title = camera.detail;
+                const settings = el('p', 'small fix-option', `1) Open ${fix.where}, and enter IP address ${fix.address} and subnet mask ${fix.netmask}.`);
+                box.append(lead, settings);
+                if (fix.command) {
+                    const line = el('div', 'fix'), copy = el('button', '', 'Copy');
+                    copy.type = 'button'; copy.title = 'Copy the command';
+                    copy.onclick = async () => { try { await navigator.clipboard.writeText(fix.command); copy.textContent = 'Copied'; } catch (e) { copy.textContent = 'Select it'; } setTimeout(() => { copy.textContent = 'Copy'; }, 1500); };
+                    line.append(el('code', '', fix.command), copy);
+                    box.append(el('p', 'small fix-or', 'or'), el('p', 'small fix-option', `2) ${fix.terminal || 'Open a terminal'}, then paste this command and press Enter:`), line);
+                }
+                box.append(el('p', 'small', 'Then press Find cameras again.'));
             }
+            else if (!camera.rtsp || camera.rtsp.needsLogin) box.append(el('p', 'small', camera.explanation));
             rows.push(box);
         }
         if (found && found.blocked && !found.cameras.length) {
@@ -513,7 +520,7 @@
         const real = rows.length;
         if (searchError) rows.push(el('p', 'small', searchError));
         if (deviceProblem && !devices.some(device => device.deviceId)) rows.push(el('p', 'small', deviceProblem));     // only while none of them can be listed
-        if (!real) rows.push(el('p', 'small', searching ? 'Looking on this computer and on the network…' : found ? 'No camera found. Check that it is switched on and plugged in, then Find cameras again; or add it by hand.' : 'Find cameras looks on this computer and on the network.'));
+        if (!real && !searching) rows.push(el('p', 'small', found ? 'No camera found. Check that it is switched on and plugged in, then Find cameras again; or add it by hand.' : 'Find cameras looks on this computer and on the network.'));
         // Always on offer: a stand-in for a camera that is not here yet, to build the stream against a photo or video of its view.
         const sim = item('Simulated camera', 'A stand-in photo or video');
         sim.box.classList.add('simulated');
@@ -521,7 +528,11 @@
         rows.push(sim.box);
         $('foundList').replaceChildren(...rows);
         const count = devices.filter(device => device.deviceId).length + (found ? found.cameras.length : 0);
-        $('searchStatus').textContent = searching ? 'Looking…' : found ? (count ? `${count} found` : 'None found') : '';
+        // While it searches: a spinner and what it is doing, and a bar that fills over the seconds the search takes.
+        $('searchStatus').textContent = searching ? 'Searching for network cameras…' : found ? (count ? `${count} found` : 'None found') : '';
+        $('searchStatus').classList.toggle('busy', searching);
+        const bar = $('searchProgress');
+        if (bar.hidden === searching) { bar.hidden = !searching; if (searching) bar.replaceChildren(document.createElement('i')); }     // a fresh bar starts from empty
         $('findDevices').disabled = searching;
     }
     /** Find cameras: one press looks on this computer and listens on the network, together. Also run when the tab is first opened. */
