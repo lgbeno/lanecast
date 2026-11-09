@@ -41,7 +41,8 @@ contextBridge.exposeInMainWorld('lanecast', {
         chooseMedia: id => invoke('cameras:chooseMedia', id),
         clearMedia: id => invoke('cameras:clearMedia', id),
         mediaBytes: id => invoke('cameras:mediaBytes', id),
-        onStatus: callback => on('cameras:status', callback)
+        onStatus: callback => on('cameras:status', callback),
+        onNetwork: callback => on('cameras:network', callback)
     },
     ptz: {
         probe: (id, again) => invoke('ptz:probe', id, again),

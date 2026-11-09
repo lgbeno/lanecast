@@ -119,4 +119,25 @@ test('silence is told from a shut door: hearing nothing at all, or being refused
     assert.match(D.blockedBy(heard({ packets: 0 }), 'linux').where, /5353/);
     assert.equal(D.blockedBy(null), null);
 });
-console.log(`${test.count()} discover test groups passed`);
+test('this computer\'s addresses are summed up in one string that changes when an adapter does', () => {
+    const wifi = { address: '192.168.68.82', netmask: '255.255.252.0', family: 'IPv4', internal: false }, self = { address: '169.254.174.205', netmask: '255.255.0.0', family: 'IPv4', internal: false };
+    const before = D.networkSignature({ lo0: [{ address: '127.0.0.1', netmask: '255.0.0.0', family: 'IPv4', internal: true }], en0: [wifi, { address: 'fe80::1', family: 'IPv6', internal: false }], en5: [self], utun3: [{ address: '100.71.78.105', netmask: '255.255.255.255', family: 'IPv4', internal: false }] });
+    assert.equal(before, 'en0 192.168.68.82 255.255.252.0|en5 169.254.174.205 255.255.0.0', 'only the adapters a camera could be behind');
+    const after = D.networkSignature({ en5: [{ ...self, address: '192.168.1.10', netmask: '255.255.255.0' }], en0: [wifi] });
+    assert.notEqual(after, before, 'the adapter set by hand reads differently'); assert.equal(D.networkSignature({ en5: [self], en0: [wifi] }), before, 'the order it is listed in does not matter');
+});
+// The watch itself, on a quickened clock: a change is reported once it has settled, and only once.
+const watched = (async () => {
+    const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
+    let now = 'a', calls = 0;
+    const stop = D.watchNetwork(() => calls++, { every: 10, settle: 40, read: () => now });
+    await wait(60); assert.equal(calls, 0, 'nothing changed, nothing said');
+    now = ''; await wait(25); now = 'b'; await wait(25);                 // an adapter being set passes through having no address
+    assert.equal(calls, 0, 'not while it is still changing');
+    await wait(90); assert.equal(calls, 1, 'once settled, the change is reported, once');
+    now = 'c'; await wait(25); now = 'b'; await wait(90);
+    assert.equal(calls, 1, 'a change that went back to how it was is not news');
+    stop(); now = 'd'; await wait(90); assert.equal(calls, 1, 'stopped, it says no more');
+    console.log('PASS a change in this computer\'s network is reported once it settles, and only once');
+})();
+watched.then(() => console.log(`${test.count()} discover test groups passed (and the network watch)`), e => { console.error('FAIL the network watch'); console.error(e); process.exitCode = 1; });

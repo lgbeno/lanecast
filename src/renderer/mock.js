@@ -82,6 +82,7 @@
             clearMedia: async id => { const c = cameras.find(x => x.id === id); if (c) c.media = null; return c; },
             mediaBytes: async () => null,
             onStatus: cb => on('cameras:status', cb),
+            onNetwork: cb => on('cameras:network', cb),
             /** Design mode only: a "real" camera added here shows a drawn test card. */
             mockStream: (() => {
                 let stream = null;

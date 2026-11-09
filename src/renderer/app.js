@@ -505,7 +505,7 @@
                     line.append(el('code', '', fix.command), copy);
                     box.append(el('p', 'small fix-or', 'or'), el('p', 'small fix-option', `2) ${fix.terminal || 'Open a terminal'}, then paste this command and press Enter:`), line);
                 }
-                box.append(el('p', 'small', 'Then press Find cameras again.'));
+                box.append(el('p', 'small', 'This list updates by itself once that is done.'));
             }
             else if (!camera.rtsp || camera.rtsp.needsLogin) box.append(el('p', 'small', camera.explanation));
             rows.push(box);
@@ -536,16 +536,19 @@
         $('findDevices').disabled = searching;
     }
     /** Find cameras: one press looks on this computer and listens on the network, together. Also run when the tab is first opened. */
-    let finding = null;
+    let finding = null, findAgain = false;
     function findCameras() {
         if (finding) return finding;
         searching = true; searchError = ''; renderFound();
         for (const camera of cameraList) askSteerable(camera, true);               // and ask each network camera again whether it can be steered
         const network = api.cameras.discover().then(result => { found = result; }, e => { found = found || { cameras: [], adapters: [], notes: [], blocked: null }; searchError = e.message.replace(/^Error invoking remote method '[^']+': (Error: )?/, ''); });
-        finding = Promise.all([refreshDevices(true).catch(() => {}), network]).then(() => { searching = false; finding = null; renderFound(); });
+        finding = Promise.all([refreshDevices(true).catch(() => {}), network]).then(() => { searching = false; finding = null; renderFound(); if (findAgain) { findAgain = false; findCameras(); } });
         return finding;
     }
     $('findDevices').onclick = () => { findCameras(); };
+    // This computer's network changed (the adapter was set as the list asked, a cable went in): look again, unasked. Only once a
+    // search has been made, so the app does not start searching before the Camera tab has ever been opened.
+    if (api.cameras.onNetwork) api.cameras.onNetwork(() => { if (finding) findAgain = true; else if (found) findCameras(); });
     // Cameras come and go: keep the list current. A camera that went away is not reopened on its own; its tile has Reconnect.
     if (navigator.mediaDevices) navigator.mediaDevices.addEventListener('devicechange', () => refreshDevices(false));
     function renderCameras() {

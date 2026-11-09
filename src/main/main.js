@@ -93,6 +93,8 @@ app.whenReady().then(async () => {
     else if (lastProject && store.get('theme') === 'p-project') { try { await projects.open(lastProject); } catch (e) { store.set('projectPath', null); } }
     Menu.setApplicationMenu(buildMenu());
     createWindow();
+    // When this computer's network changes (an adapter set by hand, a cable plugged in), the window looks for cameras again by itself.
+    stopNetworkWatch = require('./discover').watchNetwork(() => send('cameras:network'));
     app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
 }).catch(e => {
     // Never fail silently with no window: say what went wrong, then leave.
@@ -162,7 +164,8 @@ ipcMain.handle('project:save', () => projectSave());
 ipcMain.handle('project:saveAs', () => projectSaveAs());
 ipcMain.handle('project:saveTo', (event, file) => projectSaveTo(String(file)));
 ipcMain.handle('project:rename', (event, name) => projectRename(String(name ?? '')));
-app.on('before-quit', () => { ptz.close(); if (serial) serial.closeAll(); if (relay) relay.stop(); if (cameras) cameras.stop(); if (store) store.flush(); });
+let stopNetworkWatch = () => {};
+app.on('before-quit', () => { stopNetworkWatch(); ptz.close(); if (serial) serial.closeAll(); if (relay) relay.stop(); if (cameras) cameras.stop(); if (store) store.flush(); });
 // However the process ends, go2rtc must not outlive it.
 process.on('exit', () => { if (cameras) cameras.stop(); });
 
