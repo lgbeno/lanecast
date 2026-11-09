@@ -54,6 +54,7 @@ That path is always right: inside Lanecast it is served from the app, in a brows
 | `Lanecast.camera(ref)` | put a camera on the program, by its name as typed on the Camera tab, or its id. Unknown: ignored |
 | `Lanecast.layout({ x, y, w, h, fit })` | place the camera inside the picture: fractions 0–1 of the picture's width and height; `fit` `'contain'` (default) or `'cover'`. `{ x: 0, y: 0, w: 1, h: 1 }` fills it |
 | `Lanecast.position(name, camera?)` | steer a camera to a position the user saved under that name (Camera tab, or **Camera control** on the Stream tab). The program camera unless `camera` (a name or id) says otherwise. Unknown name, or a camera that cannot be steered: ignored, with a line in the Theme tab's console |
+| `Lanecast.steer({ pan, tilt, zoom }, camera?)` | drive a camera: each from −1 to 1 (right, up and in are positive; the size is the speed). It must be called again several times a second for as long as the camera should keep moving; within a second of the last call the camera stops by itself. `Lanecast.steer()` stops at once |
 | `Lanecast.send(data)` | to the theme's other pages; each gets it as `Lanecast.on('<sender's role>', …)`: `'overlay'`, `'control'` or `'dialog'`. `data` is any JSON |
 | `Lanecast.dialog(page, { title, width, height })` | pop out another page of the theme as a modal over the Stream tab, for anything too detailed for the control panel: colours, logos, titles. `page` is a file in the theme folder |
 | `Lanecast.closeDialog()` | close it, from inside the dialog or from anywhere else |
@@ -128,6 +129,19 @@ Lanecast.position('Scoreboard', 'Deck cam');                            // anoth
 ```
 
 A position holds the pan, tilt, zoom and focus the user saved. The camera takes a moment to travel, focusing as it goes, so cue a position a beat before the graphic that needs it, and consider cutting to another camera while it moves. The names are whatever the user typed, compared without regard to case; `state.cameras[i].positions` lists them, so a control panel can offer a button for each (the template's does), and a theme that depends on particular names should say which in its `description`. A name the camera does not have is ignored and noted in the Theme tab's console. Like the other director calls, this does nothing outside Lanecast.
+
+For a theme that follows something rather than cutting between places, there is `Lanecast.steer`:
+
+```js
+// Each time round a loop of your own, say where to drive: here, slowly right and a little in.
+const follow = setInterval(() => Lanecast.steer({ pan: 0.2, tilt: 0, zoom: 0.1 }), 200);
+// ...and when done:
+clearInterval(follow); Lanecast.steer();
+```
+
+It behaves like a held button. The camera keeps moving only while the calls keep coming, and stops by itself within a second of the last one, so a theme that stops, crashes or is switched away cannot leave a camera running. Going to a named position while steering takes over; steering while a position is being reached takes over from that.
+
+What a theme does not have is the picture. The overlay is drawn over the camera but is not given its pixels, so a theme cannot yet look for a swimmer in it; `Lanecast.steer` is the half of following that is here today, driven by whatever the theme does know (the race state, a control in its panel, a source of its own).
 
 ## The control panel
 

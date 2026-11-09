@@ -107,6 +107,15 @@ test.later = (async () => {
         ptz.preset('127.0.0.1', 2); ptz.home('127.0.0.1'); await wait(40);
         assert.deepEqual(cam.got.slice(-2), ['8101043f0202ff', '81010604ff']);
         console.log('PASS a camera is found by its version answer; a drive not renewed is stopped; release, presets and home are sent');
+        // Steering, as a theme would: pan, tilt and zoom driven together; not renewed, both are stopped; all zero stops at once.
+        let steerMark = cam.got.length; ptz.steer('127.0.0.1', 0.5, 0, -0.5); await wait(60);
+        assert.deepEqual(cam.got.slice(steerMark), ['810106010c010203ff', '8101040734ff'], 'half speed right, and zooming out');
+        await wait(P.HOLD_MS + 250);
+        assert.deepEqual(cam.got.slice(steerMark + 2), ['8101060101010303ff', '8101040700ff'], 'not renewed: the camera is stopped, move and zoom');
+        steerMark = cam.got.length; ptz.steer('127.0.0.1', 0, 1, 0); await wait(40); ptz.steer('127.0.0.1', 0, 0, 0); await wait(P.HOLD_MS + 200);
+        assert.deepEqual(cam.got.slice(steerMark), ['8101060101140301ff', '8101040700ff', '8101060101010303ff', '8101040700ff'], 'all zero stops at once, and nothing follows');
+        assert.equal(ptz.steer('127.0.0.2', 1, 0, 0), false, 'a camera never probed is not steered');
+        console.log('PASS a camera is steered with pan, tilt and zoom together, and stopped when the steering ceases');
         // Where it points is read with its lens. Going back, the camera sets off with the move and with zoom and focus in one command, in
         // manual focus; when it says all three are done, autofocus is handed back.
         const MOVE = '8101060218140001020300000405ff', LENS = '81010447010203040a0b0c0dff', MANUAL = '8101043803ff', AUTO = '8101043802ff';
