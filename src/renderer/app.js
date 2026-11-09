@@ -329,7 +329,7 @@
                 chip.onclick = () => { if (editing) { target = name; input.value = name; form.hidden = false; sync(); } else api.ptz.goPosition(id, name).catch(showError); };
                 return chip;
             });
-            const add = key('+ Save position', 'Name where the camera points now, to come back to it', 'wide ptzAdd'); add.onclick = () => { target = null; input.value = ''; form.hidden = false; sync(); input.focus(); };
+            const add = key('+ Save position', 'Name where the camera points now (pan, tilt, zoom and focus), to come back to it', 'wide ptzAdd'); add.onclick = () => { target = null; input.value = ''; form.hidden = false; sync(); input.focus(); };
             const edit = key(editing ? 'Done' : 'Edit…', 'Re-teach a position to where the camera points now, or remove it', 'wide ptzEdit'); edit.hidden = !names.length; edit.onclick = () => { editing = !editing; close(); draw(); };
             places.replaceChildren(...chips, add, edit);
         };

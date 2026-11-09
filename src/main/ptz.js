@@ -33,6 +33,12 @@ const visca = {
     absolute: (pan, tilt) => [0x81, 0x01, 0x06, 0x02, 0x18, 0x14, ...nibbles(pan), ...nibbles(tilt), 0xff],
     /** Go to a zoom read earlier from the zoom inquiry. */
     zoomTo: zoom => [0x81, 0x01, 0x04, 0x47, ...nibbles(zoom), 0xff],
+    focusInquiry: () => [0x81, 0x09, 0x04, 0x48, 0xff],
+    focusModeInquiry: () => [0x81, 0x09, 0x04, 0x38, 0xff],
+    /** Autofocus on, or off (manual focus). */
+    focusMode: auto => [0x81, 0x01, 0x04, 0x38, auto ? 0x02 : 0x03, 0xff],
+    /** Put the focus where the focus inquiry said it was. A camera takes this only in manual focus, and not while it is zooming. */
+    focusTo: focus => [0x81, 0x01, 0x04, 0x48, ...nibbles(focus), 0xff],
     /** Go to preset n, or with `save` store where the camera is now as preset n. */
     preset(n, save = false) { return [0x81, 0x01, 0x04, 0x3f, save ? 0x01 : 0x02, clamp(Math.round(Number(n) || 0), 0, 127), 0xff]; }
 };
@@ -57,16 +63,23 @@ function position(message) {
     return { pan: read(2), tilt: read(6) };
 }
 
-/** The zoom out of the zoom inquiry's answer (90 50 then four nibbles), or null. */
+/** The value out of the zoom or the focus inquiry's answer (90 50 then four nibbles), or null. */
 function zoomOf(message) {
     if (!message || message[1] !== 0x50 || message.length !== 7) return null;
     return ((message[2] & 15) << 12) | ((message[3] & 15) << 8) | ((message[4] & 15) << 4) | (message[5] & 15);
+}
+/** Whether the camera is in autofocus, out of the focus mode inquiry's answer (90 50 02 or 03): true, false, or null. */
+function focusAutoOf(message) {
+    if (!message || message[1] !== 0x50 || message.length !== 4) return null;
+    return message[2] === 0x02 ? true : message[2] === 0x03 ? false : null;
 }
 
 // Named positions. The person names where the camera points. What is kept under the name is where the camera said it was
 // pointing, { pan, tilt, zoom }, read from it when the position is saved: so the position lives in the project, nothing
 // has to be stored in the camera, and opening the project on another day needs no re-programming. A camera that will not
 // say where it points gets the older arrangement instead: one of its own numbered presets, { preset }, chosen here.
+// The focus is kept as well, with whether the camera was focusing by itself: on the way back the lens is put straight to
+// it, so autofocus starts from sharp instead of hunting for it.
 // 0 to 9 are left alone (they are what people store from the camera's own remote), and so are 90 and up (several makers
 // give those numbers special jobs, such as opening the camera's menu).
 const PRESET_FIRST = 10, PRESET_LAST = 89;
@@ -82,7 +95,7 @@ function cleanPositions(list) {
     for (const p of Array.isArray(list) ? list : []) {
         const name = String((p && p.name) || '').trim().slice(0, 40);
         if (!name || names.has(name.toLowerCase())) continue;
-        if (whole(p.pan, -32768, 32767) && whole(p.tilt, -32768, 32767)) out.push({ name, pan: p.pan, tilt: p.tilt, zoom: whole(p.zoom, 0, 65535) ? p.zoom : null });
+        if (whole(p.pan, -32768, 32767) && whole(p.tilt, -32768, 32767)) out.push({ name, pan: p.pan, tilt: p.tilt, zoom: whole(p.zoom, 0, 65535) ? p.zoom : null, focus: whole(p.focus, 0, 65535) ? p.focus : null, focusAuto: p.focusAuto !== false });
         else if (whole(p.preset, 0, 127) && !numbers.has(p.preset)) { numbers.add(p.preset); out.push({ name, preset: p.preset }); }
         else continue;
         names.add(name.toLowerCase());
@@ -112,6 +125,8 @@ async function detect(host) {
 }
 
 const HOLD_MS = 900;            // a drive not renewed within this is stopped
+const ARRIVE_POLL_MS = 250, ARRIVE_TRIES = 40, FOCUS_TAKES_MS = 700;      // watching a camera arrive, then letting the lens reach its focus
+const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
 class Ptz {
     constructor() { this.known = new Map(); this.links = new Map(); }
     /** What `detect` says for this host, remembered: a yes for the session, a no for half a minute. */
@@ -143,26 +158,61 @@ class Ptz {
         const link = this.links.get(host); if (!link) return;
         clearTimeout(link.timer); link.timer = moving ? setTimeout(() => this.stop(host), HOLD_MS) : null;
     }
-    move(host, pan, tilt) { const ok = this._send(host, visca.move(pan, tilt)); this._hold(host, !!(Number(pan) || Number(tilt))); return ok; }
-    zoom(host, z) { const ok = this._send(host, visca.zoom(z)); this._hold(host, !!Number(z)); return ok; }
+    move(host, pan, tilt) { if (Number(pan) || Number(tilt)) this._leaveFocus(host); const ok = this._send(host, visca.move(pan, tilt)); this._hold(host, !!(Number(pan) || Number(tilt))); return ok; }
+    zoom(host, z) { if (Number(z)) this._leaveFocus(host); const ok = this._send(host, visca.zoom(z)); this._hold(host, !!Number(z)); return ok; }
     stop(host) { const ok = this._send(host, visca.move(0, 0)); this._send(host, visca.zoom(0)); this._hold(host, false); return ok; }
-    home(host) { return this._send(host, visca.home()); }
-    preset(host, n, save) { return this._send(host, visca.preset(n, save)); }
-    /** Where the camera points now, { pan, tilt, zoom } in its own units (zoom null if it will not say), or null. */
-    async where(host) {
+    home(host) { this._leaveFocus(host); return this._send(host, visca.home()); }
+    preset(host, n, save) { this._leaveFocus(host); return this._send(host, visca.preset(n, save)); }
+    /** Where the camera points now, { pan, tilt, zoom } in its own units (zoom null if it will not say), or null. With `lens`,
+     *  also its focus and whether it is focusing by itself: { ..., focus, focusAuto }. */
+    async where(host, lens = false) {
         const info = this.known.get(host)?.info; if (!info) return null;
         const spot = position(await ask(host, info, visca.positionInquiry()));
-        return spot ? { ...spot, zoom: zoomOf(await ask(host, info, visca.zoomInquiry())) } : null;
+        if (!spot) return null;
+        spot.zoom = zoomOf(await ask(host, info, visca.zoomInquiry()));
+        if (lens) { spot.focus = zoomOf(await ask(host, info, visca.focusInquiry())); spot.focusAuto = focusAutoOf(await ask(host, info, visca.focusModeInquiry())) !== false; }
+        return spot;
     }
-    /** Send the camera to a place read earlier with `where`. */
+    /** Send the camera to a place read earlier with `where`. If its focus was read too, the lens is put to it on arrival. */
     goTo(host, spot) {
+        this._leaveFocus(host);
         const ok = this._send(host, visca.absolute(spot.pan, spot.tilt));
         if (ok && Number.isInteger(spot.zoom)) this._send(host, visca.zoomTo(spot.zoom));
         this._hold(host, false);
+        if (ok && Number.isInteger(spot.focus)) this._focusOnArrival(host, spot);
         return ok;
     }
+    /** Put the lens to the position's focus once the camera has arrived. A camera refuses a focus position while it is zooming, and
+     *  takes one only in manual focus: so wait until it has stopped, switch to manual, set the focus, and (if the position was saved
+     *  while the camera focused by itself) hand back to autofocus, which then starts from sharp. Anything else asked of the camera
+     *  meanwhile calls this off (see _leaveFocus). */
+    async _focusOnArrival(host, spot) {
+        const link = this.links.get(host); if (!link) return;
+        const job = link.focus = { manual: false, auto: spot.focusAuto !== false };
+        let last = null;
+        for (let i = 0; i < ARRIVE_TRIES; i++) {
+            await wait(ARRIVE_POLL_MS);
+            if (link.focus !== job) return;
+            const now = await this.where(host);
+            if (link.focus !== job) return;
+            if (now && last && now.pan === last.pan && now.tilt === last.tilt && now.zoom === last.zoom) break;          // it has stopped
+            last = now;
+        }
+        job.manual = true;
+        this._send(host, visca.focusMode(false)); this._send(host, visca.focusTo(spot.focus));
+        await wait(FOCUS_TAKES_MS);
+        if (link.focus !== job) return;                                                // called off: _leaveFocus has put autofocus back
+        link.focus = null;
+        if (job.auto) this._send(host, visca.focusMode(true));
+    }
+    /** Something else is being asked of the camera: drop any focus still to be set, and never leave the camera in manual focus on our account. */
+    _leaveFocus(host) {
+        const link = this.links.get(host), job = link && link.focus; if (!job) return;
+        link.focus = null;
+        if (job.manual && job.auto) this._send(host, visca.focusMode(true));
+    }
     /** Stop everything that is moving and let the sockets go: on quit. */
-    close() { for (const [host, link] of this.links) { if (link.timer) this.stop(host); clearTimeout(link.timer); try { link.socket.close(); } catch (e) { /* closed */ } } this.links.clear(); }
+    close() { for (const [host, link] of this.links) { this._leaveFocus(host); if (link.timer) this.stop(host); clearTimeout(link.timer); try { link.socket.close(); } catch (e) { /* closed */ } } this.links.clear(); }
 }
 
-module.exports = { Ptz, detect, visca, frame, unframe, isVersion, position, zoomOf, allocatePreset, cleanPositions, HOLD_MS, PRESET_FIRST, PRESET_LAST };
+module.exports = { Ptz, detect, visca, frame, unframe, isVersion, position, zoomOf, focusAutoOf, allocatePreset, cleanPositions, HOLD_MS, PRESET_FIRST, PRESET_LAST };
