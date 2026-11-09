@@ -62,8 +62,47 @@ test('a made-up meet leans short, has names in its lanes, and times itself by th
     // Simulated races are short: 15 s for a 25 or 50, 20 s for a 100, 30 s from a 200 up; the age range never reads as a distance.
     assert.equal(Sim.secondsFor('Girls 9-10 50 Free'), 15); assert.equal(Sim.secondsFor('Boys 13-14 100 Breast'), 20);
     assert.equal(Sim.secondsFor('Mixed 11-12 200 Free Relay'), 30); assert.equal(Sim.secondsFor('Girls 8 & Under 25 Fly'), 15);
-    assert.equal(Sim.secondsFor('Boys 15 & Over 500 Free'), 30); assert.equal(Sim.secondsFor(''), 15);
+    assert.equal(Sim.secondsFor(''), 15);
+    // Longer races get four seconds a 50, so ten of them can still be told apart; never more than a minute.
+    assert.equal(Sim.secondsFor('Boys 15 & Over 500 Free'), 40); assert.equal(Sim.secondsFor('Girls 400 IM'), 32); assert.equal(Sim.secondsFor('Boys 1650 Free'), 60);
     assert.deepEqual(Sim.generateMeet({ events: 3, seed: 1 }), Sim.generateMeet({ events: 3, seed: 1 }), 'the same seed gives the same meet');
+});
+test('a race shows a split at every 50 but the last, which is the finish', () => {
+    assert.deepEqual(['Girls 8 & Under 25 Fly', 'Girls 9-10 50 Free', 'Boys 13-14 100 Breast', 'Mixed 11-12 200 Free Relay', 'Boys 15 & Over 500 Free', ''].map(t => [Sim.distanceOf(t), Sim.fifties(Sim.distanceOf(t))]),
+        [[25, 1], [50, 1], [100, 2], [200, 4], [500, 10], [50, 1]], 'the distance is read from the title, never from the age range');
+    // Watch the console's own bytes through the decoder and the event tracker, as the app does, for one heat of each distance.
+    const Events = require('../src/protocol/events');
+    const entries = [null, null, ['Ana Ruiz', 'DOLF'], ['Bea Stone', 'RAYS'], ['Cy Vale', 'WAVE'], null, null, null, null, null];
+    const watch = title => {
+        const source = new Sim.TimerSource([{ event: 1, title, gender: 'F', heats: [entries] }]), decoder = new CTS.Decoder(), tracker = new Events.Tracker();
+        const splits = new Map(), finishes = new Map(), shown = new Map(); let ms = 0;
+        source.control(1, 1); for (; ms < 1500; ms += 25) { const b = source.read(ms); if (b.length) decoder.feed(b, ms); tracker.update(decoder.snapshot(ms), null, ms); }
+        source.race(true);
+        for (const until = ms + 75000; ms < until; ms += 25) {
+            const bytes = source.read(ms); if (bytes.length) decoder.feed(bytes, ms);
+            const snapshot = decoder.snapshot(ms);
+            for (const event of tracker.update(snapshot, null, ms)) {
+                if (event.name === 'lane.split') splits.set(event.lane, [...(splits.get(event.lane) || []), event.time]);
+                if (event.name === 'lane.finish') finishes.set(event.lane, event.time);
+            }
+            for (const lane of snapshot.lanes) if (lane.time && !lane.place) shown.set(lane.lane, (shown.get(lane.lane) || 0) + 1);
+        }
+        return { splits, finishes, shown };
+    };
+    const seconds = text => { const [m, s] = text.split(':'); return Number(m) * 60 + Number(s); };
+    for (const [title, expected] of [['Girls 8 & Under 25 Fly', 0], ['Girls 9-10 50 Free', 0], ['Boys 13-14 100 Breast', 1], ['Girls 11-12 200 Free', 3], ['Mixed 11-12 200 Free Relay', 3], ['Boys 15 & Over 500 Free', 9]]) {
+        const { splits, finishes } = watch(title);
+        assert.deepEqual([...finishes.keys()].sort(), [3, 4, 5], `${title}: all three swimmers finish`);
+        for (const lane of [3, 4, 5]) {
+            const times = (splits.get(lane) || []).map(seconds), final = seconds(finishes.get(lane));
+            assert.equal(times.length, expected, `${title}: lane ${lane} shows ${expected} split(s) before its finish, got ${times.length}`);
+            assert.deepEqual(times, [...times].sort((a, b) => a - b), `${title}: splits come in order`);
+            if (times.length) assert(times.at(-1) < final && times[0] > 0, `${title}: every split is before the finish`);
+            // Each 50 takes about as long as the others: no split is squeezed against its neighbour.
+            const legs = [...times, final].map((t, i, all) => t - (i ? all[i - 1] : 0));
+            assert(Math.max(...legs) < Math.min(...legs) * 1.35, `${title}: lane ${lane} swims its 50s at an even pace: ${legs.map(l => l.toFixed(1)).join(' ')}`);
+        }
+    }
 });
 test('the console runs whatever meet it is given, from the heat asked for, round and round', () => {
     const source = new Sim.TimerSource(Sim.generateMeet({ events: 4, seed: 3, from: 10 })), d = new CTS.Decoder();
