@@ -104,6 +104,23 @@ app.on('browser-window-created', (event, win) => {
         check(!renamed.open && renamed.tiles.join(',') === 'Pool,Finish line' && renamed.sims === 1 && renamed.select === 'Pool,Finish line', `saved: renamed to Finish line, back to real; the program camera list follows`);
         await js(`[...document.querySelectorAll('.tile')].find(t => t.querySelector('.name').textContent === 'Finish line').querySelector('.gear').click()`); await wait(300); await click('cdRemove', 1200);
         check(await js(`document.querySelectorAll('.tile').length === 1 && ${text('camerasLabel')} === 'Camera'`), 'removed from its dialog; tab reads Camera again');
+        // A camera on this computer, when there is one: open, Disconnect from the tile, Reconnect, open again.
+        const device = await js(`navigator.mediaDevices.enumerateDevices().then(ds => ds.find(d => d.kind === 'videoinput' && d.deviceId) || null).then(d => d && { id: d.deviceId, label: d.label })`);
+        const cameraAccess = device ? await js(`window.lanecast.cameras.access()`) : 'none';
+        if (device && cameraAccess !== 'granted') console.log(`SKIP opening a camera on this computer: camera access is ${cameraAccess} for this run`);
+        else if (device) {
+            const local = await js(`window.lanecast.cameras.add({ name: 'Local', url: 'device:' + ${JSON.stringify(device.id)}, deviceLabel: ${JSON.stringify(device.label)} })`);
+            const tileOf = `[...document.querySelectorAll('.tile')].find(t => t.dataset.id === ${JSON.stringify(local.id)})`;
+            const state = () => js(`(t => t ? { status: t.querySelector('.small').textContent, button: t.querySelector('.reconnect').textContent, hidden: t.querySelector('.reconnect').hidden } : { status: '', button: '', hidden: true })(${tileOf})`);     // the tile appears at the next refresh
+            let s; for (let i = 0; i < 40 && !(s = await state()).status.startsWith('Live'); i++) await wait(250);
+            check(s.status.startsWith('Live') && s.button === 'Disconnect' && !s.hidden, `a camera on this computer opens; its tile offers Disconnect: ${s.status}`);
+            await js(`${tileOf}.querySelector('.reconnect').click()`); await wait(400); s = await state();
+            check(/^Disconnected · by you/.test(s.status) && s.button === 'Reconnect', `Disconnect from the tile lets it go: ${s.status} / ${s.button}`);
+            await js(`${tileOf}.querySelector('.reconnect').click()`);
+            for (let i = 0; i < 40 && !(s = await state()).status.startsWith('Live'); i++) await wait(250);
+            check(s.status.startsWith('Live') && s.button === 'Disconnect', `Reconnect opens it again: ${s.status}`);
+            await js(`window.lanecast.cameras.remove(${JSON.stringify(local.id)})`); await wait(1500);
+        } else console.log('SKIP no camera on this computer to open');
         await js(`document.getElementById('tab-stream').click()`); await wait(1500);
         check(/^Camera engine running/.test(cams.engine), 'camera engine running: ' + cams.engine);
         const pixel = await js(`(() => { const v = document.getElementById('programVideo'), c = document.createElement('canvas'); c.width = 64; c.height = 36; const x = c.getContext('2d'); x.drawImage(v, 0, 0, 64, 36); const d = x.getImageData(0, 0, 64, 36).data; let lit = 0; for (let i = 0; i < d.length; i += 4) if (d[i] + d[i + 1] + d[i + 2] > 120) lit++; return lit; })()`);
