@@ -22,6 +22,7 @@
 (() => {
   const board = Scoreboard.start({
     labels: { clock: 'Time' },
+    marker: n => n > 9 ? `<small>${n}</small>` : String(n),                 // two figures are too wide for the block at full size
     fragments: ['#c84c0c', '#fbd000', '#7a2e06', '#ffe86b'],              // a block breaks into bricks
     buttons: [{ label: 'Send the duck across', action: 'duck' }]
   });
