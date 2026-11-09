@@ -75,3 +75,13 @@ test('the Jaguars theme matches a school by an assigned code or an exact name, a
     assert.equal(match(''), null);
     assert.equal(match('XXXX', { XXXX: 'no-such-school' }), null, 'a code assigned to a school that is not in the table matches nothing');
 });
+
+test('a font shipped in a built-in theme has its licence beside it', () => {
+    let fonts = 0;
+    for (const theme of themes) for (const file of walk(path.join(ROOT, theme)).filter(f => /\.(ttf|otf|woff2?)$/i.test(f))) {
+        fonts++;
+        assert(fs.readdirSync(path.dirname(file)).some(n => /^(OFL|LICEN[CS]E)(\.txt|\.md)?$/i.test(n)), `${path.relative(ROOT, file)} has a licence file in its folder`);
+    }
+    assert(fonts >= 1, 'found the Arcade theme\'s font');
+    assert(/SIL Open Font License/.test(read('arcade', 'fonts/OFL.txt')));
+});

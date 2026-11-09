@@ -23,7 +23,7 @@ A home console from the 1980s: chunky blocks with hard black edges and a bevel, 
 | The marquee | night blue `#10122b`, yellow bulbs, a red inner line | |
 | Text | white, or yellow for numbers, always with a black outline | The outline is what makes it readable on any colour |
 
-Type: the computer's own monospaced face, extra bold (`ui-monospace`, Menlo, Consolas, Courier New). See the open question about a pixel font.
+Type: Press Start 2P, a pixel face in which every character is as wide as it is tall, so type sizes are small for what they hold. The font file ships in the theme's folder (`fonts/`), with its licence beside it. The computer's monospaced face is the fallback.
 
 ## 3. The pool and the picture
 
@@ -80,6 +80,7 @@ The shared scoreboard settings, as Clean.
 
 | File | What | Where it came from, and the right to use it |
 | --- | --- | --- |
+| `fonts/PressStart2P-Regular.ttf` | The typeface | The Press Start 2P Project Authors, from the Google Fonts repository. SIL Open Font License 1.1 (`fonts/OFL.txt`), which allows it to be bundled and redistributed with the theme |
 | (none) | The duck is a pixel map in `overlay.html`; everything else is CSS | Original to this theme |
 
 ## 12. Not wanted
@@ -93,12 +94,13 @@ The shared scoreboard settings, as Clean.
 - [x] In the preview at the lineup, on a split, as swimmers finish (coins) and on the results ("HEAT 1 CLEAR!")
 - [x] The duck crossing at a new event
 - [x] With no event on the board, and with no start lists
-- [x] A very long name; a very long event name; ten lanes
+- [x] A very long name; a very long event name; ten lanes, in the pixel font
+- [x] The font loading inside the app's strict frames, by the smoke run
 - [ ] "GO!" at the start, and the boards on the left: built, not looked at
 - [ ] Against a picture of a real pool
 
 ## Decisions and open questions
 
 - 2026-11-09. Renamed from the earlier theme, and its borrowed character, question-mark blocks and green pipe replaced by a duck, plain blocks and a marquee. A theme that ships inside a public app cannot carry another company's characters.
-- 2026-11-09. The earlier theme loaded the pixel font Press Start 2P from the internet. A Lanecast theme may not load anything from the internet, so the computer's monospaced face stands in. The font's licence (SIL Open Font License) does allow shipping it in the theme's folder. Open: whether to add it; sizes would need setting again, since it is much wider.
+- 2026-11-09. The earlier theme loaded the pixel font Press Start 2P from the internet. A Lanecast theme may not load anything from the internet, so the font file is in the theme's folder instead, which its licence (SIL Open Font License) allows. Sizes were set again for it: it is much wider than an ordinary face.
 - 2026-11-09. The callouts under the header are new; the earlier theme had none.
