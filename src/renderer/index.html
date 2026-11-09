@@ -27,6 +27,7 @@
 <div class="labelled"><span class="eyebrow">HEAT</span><div class="stepper mini"><button id="simHeatDown" class="step" type="button" title="Previous heat">−</button><input id="simHeatNo" type="number" min="1" max="99" aria-label="Heat"><button id="simHeatUp" class="step" type="button" title="Next heat">+</button></div></div>
 <button id="simRun" class="latch" type="button" aria-pressed="false" title="From this event and heat: lineup, race, results, next heat, through every event loaded, round and round">Run</button>
 <span id="simSummary" class="small" hidden></span></div>
+<button id="cameraControlToggle" type="button" hidden aria-pressed="false" title="Steer a camera from here: pan, tilt, zoom and its named positions">Camera control</button>
 <button id="drawerToggle" type="button" hidden aria-pressed="true" title="Show or hide the theme's controls">Theme controls</button>
 </div>
 <div class="work" id="work">
@@ -34,6 +35,7 @@
 <video id="programVideo" autoplay muted playsinline></video>
 <iframe id="overlayFrame" class="overlay" sandbox="allow-scripts" allowtransparency="true" title="Theme overlay"></iframe>
 <p class="stage-note" id="stageNote">No camera. Add one on the Camera tab.</p>
+<div id="cameraPanel" class="camera-panel" hidden><div class="camera-panel-head"><strong>Camera control</strong><span id="cameraPanelName" class="small"></span><select id="cameraPanelSelect" title="Which camera to steer"></select><button id="cameraPanelClose" type="button" title="Close">✕</button></div><div id="cameraPanelBody"></div></div>
 </div>
 <aside class="drawer" id="drawer" hidden><div class="grip" id="drawerGrip" title="Drag to resize"></div><div class="drawer-body" id="drawerBody"><iframe id="controlFrame" sandbox="allow-scripts" title="Theme control panel"></iframe></div></aside>
 </div>

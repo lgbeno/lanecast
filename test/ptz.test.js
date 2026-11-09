@@ -31,6 +31,30 @@ test('VISCA replies are read raw or in Sony framing; the version answer says the
     assert.equal(P.position(P.unframe(raw)), null, 'another answer is not a position');
 });
 
+test('positions have names; the preset numbers behind them are chosen, kept and reused by the app', () => {
+    assert.equal(P.allocatePreset([]), 10, 'the first position takes preset 10: 0 to 9 are left to the camera’s own remote');
+    assert.equal(P.allocatePreset([{ name: 'a', preset: 10 }, { name: 'b', preset: 12 }]), 11, 'a freed number is used again');
+    assert.equal(P.allocatePreset(Array.from({ length: 80 }, (_, i) => ({ name: 'p' + i, preset: 10 + i }))), null, 'never 90 and up, which some cameras give special jobs');
+    assert.deepEqual(P.cleanPositions([{ name: ' Blocks ', preset: 10 }, { name: 'blocks', preset: 11 }, { name: 'Wide', preset: 10 }, { name: '', preset: 12 }, { name: 'Far', preset: 'x' }, { name: 'Deep', preset: 300 }, null, { name: 'Finish', preset: 13 }]),
+        [{ name: 'Blocks', preset: 10 }, { name: 'Finish', preset: 13 }], 'a file’s positions are taken only when name and number are each used once and sane');
+    assert.deepEqual(P.cleanPositions(undefined), []);
+    // The camera list keeps them, by name, and saves them with the camera.
+    const { CameraEngine } = require('../src/main/cameras');
+    let saved = null;
+    const engine = new CameraEngine({ dataDir: require('node:os').tmpdir(), cameras: [{ id: 'cam-a', name: 'Wide', url: 'rtsp://10.0.0.9/1', positions: [{ name: 'Whole pool', preset: 10 }] }, { id: 'cam-b', name: 'Fixed', url: 'rtsp://10.0.0.8/1' }], onChange: list => { saved = list; } });
+    assert.deepEqual(engine.describe(engine.find('cam-a')).positions, ['Whole pool'], 'the window sees names only');
+    assert.equal(engine.savePosition('cam-a', 'Finish line'), 11);
+    assert.equal(engine.savePosition('cam-a', 'finish LINE'), 11, 'the same name, however typed, points the same preset somewhere new');
+    assert.equal(engine.savePosition('cam-b', 'Blocks'), 10, 'each camera has its own numbers');
+    assert.deepEqual(engine.describe(engine.find('cam-a')).positions, ['Whole pool', 'Finish line']);
+    assert.deepEqual(saved.find(c => c.id === 'cam-a').positions, [{ name: 'Whole pool', preset: 10 }, { name: 'Finish line', preset: 11 }], 'saved with the camera, numbers and all');
+    assert.equal(engine.positionPreset('cam-a', 'WHOLE POOL'), 10); assert.equal(engine.positionPreset('cam-a', 'Nowhere'), null);
+    assert.equal(engine.removePosition('cam-a', 'Whole pool'), true); assert.equal(engine.removePosition('cam-a', 'Whole pool'), false);
+    assert.equal(engine.savePosition('cam-a', 'Blocks'), 10, 'the freed number is taken by the next position');
+    assert.throws(() => engine.savePosition('cam-a', '   '), /name/);
+    assert.throws(() => engine.savePosition('cam-zzz', 'x'), /No such camera/);
+});
+
 // A stand-in camera on this computer's loopback: answers the version inquiry, records what it is told.
 const camera = () => new Promise(resolve => {
     const socket = dgram.createSocket('udp4'), got = [];

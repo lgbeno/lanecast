@@ -105,7 +105,10 @@
         // Design mode: every network camera can be steered, and the commands go to the console.
         ptz: { probe: async id => { const c = cameras.find(c => c.id === id); return c && /^rtsp/.test(c.url) ? { protocol: 'VISCA', port: 1259, framed: false } : null; },
             move: async (...a) => { console.log('ptz move', ...a); return true; }, zoom: async (...a) => { console.log('ptz zoom', ...a); return true; }, stop: async id => { console.log('ptz stop', id); return true; },
-            home: async id => { console.log('ptz home', id); return true; }, preset: async (...a) => { console.log('ptz preset', ...a); return true; } },
+            home: async id => { console.log('ptz home', id); return true; },
+            savePosition: async (id, name) => { const c = cameras.find(c => c.id === id); c.positions ||= []; if (!c.positions.some(p => p.toLowerCase() === name.toLowerCase())) c.positions.push(name); localStorage.setItem('lanecast-mock:cameras', JSON.stringify(cameras)); console.log('ptz save position', id, name); return c.positions; },
+            goPosition: async (id, name) => { const c = cameras.find(c => c.id === id), ok = !!c && (c.positions || []).some(p => p.toLowerCase() === String(name).toLowerCase()); console.log('ptz go to position', id, name, ok ? '' : '(no such position)'); return ok; },
+            removePosition: async (id, name) => { const c = cameras.find(c => c.id === id); c.positions = (c.positions || []).filter(p => p !== name); localStorage.setItem('lanecast-mock:cameras', JSON.stringify(cameras)); return true; } },
         project: { info: async () => ({ path: null, name: localStorage.getItem('mock-project') || 'Design mode', named: true }), rename: async name => { localStorage.setItem('mock-project', name); return { path: null, name: name || 'Design mode', named: true }; }, new: async () => ({ path: null, name: 'Design mode', named: true }), open: async () => { throw new Error('Design mode cannot open files; run the app for that'); }, save: async () => { throw new Error('Design mode cannot save files; run the app for that'); }, saveAs: async () => { throw new Error('Design mode cannot save files; run the app for that'); }, onChange: cb => on('project:changed', cb) },
         themes: {
             list: async () => [

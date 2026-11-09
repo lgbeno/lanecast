@@ -49,6 +49,27 @@ function position(message) {
     return { pan: read(2), tilt: read(6) };
 }
 
+// Named positions. The person names where the camera points; behind each name is one of the camera's numbered presets,
+// chosen here and never shown. 0 to 9 are left alone (they are what people store from the camera's own remote), and so
+// are 90 and up (several makers give those numbers special jobs, such as opening the camera's menu).
+const PRESET_FIRST = 10, PRESET_LAST = 89;
+/** The lowest preset number no position of this camera uses yet, or null when they are all taken. */
+function allocatePreset(positions) {
+    const used = new Set((positions || []).map(p => p.preset));
+    for (let n = PRESET_FIRST; n <= PRESET_LAST; n++) if (!used.has(n)) return n;
+    return null;
+}
+/** A camera's positions as read from a settings or project file: [{ name, preset }], names and numbers each used once. */
+function cleanPositions(list) {
+    const out = [], names = new Set(), numbers = new Set();
+    for (const p of Array.isArray(list) ? list : []) {
+        const name = String((p && p.name) || '').trim().slice(0, 40), preset = Number(p && p.preset);
+        if (!name || !Number.isInteger(preset) || preset < 0 || preset > 127 || names.has(name.toLowerCase()) || numbers.has(preset)) continue;
+        names.add(name.toLowerCase()); numbers.add(preset); out.push({ name, preset });
+    }
+    return out;
+}
+
 const WAYS = [{ port: 1259, framed: false }, { port: 52381, framed: true }];
 /** Send one inquiry and wait for its answer: the VISCA bytes, or null when nothing came. */
 function ask(host, way, body, ms = 700) {
@@ -113,4 +134,4 @@ class Ptz {
     close() { for (const [host, link] of this.links) { if (link.timer) this.stop(host); clearTimeout(link.timer); try { link.socket.close(); } catch (e) { /* closed */ } } this.links.clear(); }
 }
 
-module.exports = { Ptz, detect, visca, frame, unframe, isVersion, position, HOLD_MS };
+module.exports = { Ptz, detect, visca, frame, unframe, isVersion, position, allocatePreset, cleanPositions, HOLD_MS, PRESET_FIRST, PRESET_LAST };

@@ -53,7 +53,7 @@ class Projects {
         const themeId = this.store.get('theme', 'b-classic'), theme = this.themes.get(themeId) || this.themes.get('b-classic');
         return {
             format: FORMAT, app: 'Lanecast', version: this.version, name, savedAt: new Date().toISOString(),
-            cameras: this.cameras.cameras.map(c => ({ id: c.id, name: c.name, url: c.url, simulate: c.simulate, deviceLabel: c.deviceLabel || '', media: c.media ? `media/${c.id}${path.extname(c.media.path).toLowerCase()}` : null })),
+            cameras: this.cameras.cameras.map(c => ({ id: c.id, name: c.name, url: c.url, simulate: c.simulate, deviceLabel: c.deviceLabel || '', positions: c.positions || [], media: c.media ? `media/${c.id}${path.extname(c.media.path).toLowerCase()}` : null })),
             theme: theme ? { id: themeId, name: theme.name.replace(/ \(project\)$/, ''), version: theme.version } : null,
             themeSettings: this.store.get('theme-settings:' + themeId, {}) || {},
             simulate: this.store.get('simulate', {}) || {},

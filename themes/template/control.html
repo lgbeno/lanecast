@@ -44,6 +44,8 @@ button[aria-pressed="true"] { background: #ffcc33; border-color: #ffcc33; color:
 </div>
 <h2>CAMERA</h2>
 <div class="stack" id="cams"></div>
+<h2 id="placesTitle" hidden>CAMERA POSITIONS</h2>
+<div class="stack" id="places"></div>
 <h2>NOW</h2>
 <p class="now" id="now">Waiting for the scoreboard…</p>
 
@@ -61,9 +63,14 @@ button[aria-pressed="true"] { background: #ffcc33; border-color: #ffcc33; color:
   let shown = '';
   Lanecast.on('state', s => {
     $('now').innerHTML = s.event ? `Event <b>${s.event}</b> heat <b>${s.heat}</b> · ${s.phase} · <b>${s.clock || '0:00.0'}</b>` : 'No event on the board';
-    const key = s.cameras.map(c => c.id + ':' + c.name).join('|') + '#' + s.camera;
+    const key = s.cameras.map(c => c.id + ':' + c.name + ':' + (c.positions || []).join(',')).join('|') + '#' + s.camera;
     if (key === shown) return; shown = key;
     $('cams').replaceChildren(...s.cameras.map(c => { const b = document.createElement('button'); b.textContent = c.name; b.setAttribute('aria-pressed', String(c.id === s.camera)); b.onclick = () => Lanecast.camera(c.id); return b; }));
+    // A camera that can be steered has positions the user saved under names: one button each, for the camera on the program.
+    // The overlay can cue the same names by itself, e.g. Lanecast.on('race.start', () => Lanecast.position('Whole pool')).
+    const on = s.cameras.find(c => c.id === s.camera), places = (on && on.positions) || [];
+    $('placesTitle').hidden = !places.length;
+    $('places').replaceChildren(...places.map(name => { const b = document.createElement('button'); b.textContent = name; b.onclick = () => Lanecast.position(name); return b; }));
   });
 })();
 </script>
