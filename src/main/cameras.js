@@ -10,6 +10,7 @@ const { spawn, execFileSync } = require('node:child_process');
 const fs = require('node:fs');
 const fsp = require('node:fs/promises');
 const path = require('node:path');
+const { allocatePreset, cleanPositions } = require('./ptz');
 
 const OS = { darwin: 'mac', win32: 'win', linux: 'linux' };
 const RETRY_MS = 3000, START_TIMEOUT_MS = 6000;
@@ -43,7 +44,7 @@ class CameraEngine {
         this.config = path.join(dataDir, 'go2rtc.yaml');
         this.port = port; this.webrtcPort = webrtcPort; this.rtspPort = rtspPort; this.api = `http://127.0.0.1:${port}`;
         this.cameras = cameras.filter(c => c && typeof c.id === 'string').map(c => ({
-            id: c.id, name: String(c.name || ''), url: typeof c.url === 'string' ? c.url : '', simulate: !!c.simulate, deviceLabel: String(c.deviceLabel || ''),
+            id: c.id, name: String(c.name || ''), url: typeof c.url === 'string' ? c.url : '', simulate: !!c.simulate, deviceLabel: String(c.deviceLabel || ''), positions: cleanPositions(c.positions),
             media: c.media && typeof c.media.path === 'string' ? this._media(c.media.path) : null
         }));
         this.onChange = onChange; this.onStatus = onStatus;
@@ -51,7 +52,7 @@ class CameraEngine {
     }
     state() { return { running: this.running, error: this.error, api: this.api, version: this.version, installed: !!this.binary, ffmpeg: !!this.ffmpeg, log: this.log.slice(-5) }; }
     _changed() { this.onStatus(this.state()); }
-    _save() { this.onChange(this.cameras.map(c => ({ id: c.id, name: c.name, url: c.url, simulate: c.simulate, deviceLabel: c.deviceLabel || '', media: c.media ? { path: c.media.path } : null }))); }
+    _save() { this.onChange(this.cameras.map(c => ({ id: c.id, name: c.name, url: c.url, simulate: c.simulate, deviceLabel: c.deviceLabel || '', positions: c.positions || [], media: c.media ? { path: c.media.path } : null }))); }
     _media(file) {
         const ext = path.extname(file).slice(1).toLowerCase();
         const kind = IMAGES.includes(ext) ? 'image' : VIDEOS.includes(ext) ? 'video' : null;
@@ -107,7 +108,7 @@ class CameraEngine {
             else await fetch(`${this.api}/api/streams?src=${encodeURIComponent(c.id)}`, { method: 'DELETE' });
         } catch (e) { /* listed at next start */ }
     }
-    describe(c) { return { id: c.id, name: c.name, url: c.url, simulate: c.simulate, local: isDevice(c), deviceLabel: c.deviceLabel || '', media: c.media ? { name: c.media.name, kind: c.media.kind, version: c.media.version } : null }; }
+    describe(c) { return { id: c.id, name: c.name, url: c.url, simulate: c.simulate, local: isDevice(c), deviceLabel: c.deviceLabel || '', positions: (c.positions || []).map(p => p.name), media: c.media ? { name: c.media.name, kind: c.media.kind, version: c.media.version } : null }; }
     /** Cameras with what go2rtc knows about each: whether a source is connected and how many viewers it has. */
     async list() {
         let streams = {};
@@ -122,7 +123,7 @@ class CameraEngine {
         if (!url && !simulate) throw new Error('Enter the camera’s address, or add it as simulated');
         if (url && this.cameras.some(c => c.url === url)) throw new Error('That camera is already in the list');
         const id = 'cam-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
-        const camera = { id, name: name || `Camera ${this.cameras.length + 1}`, url, simulate: !!simulate, deviceLabel: isDevice({ url }) ? String(deviceLabel || name || '') : '', media: null };
+        const camera = { id, name: name || `Camera ${this.cameras.length + 1}`, url, simulate: !!simulate, deviceLabel: isDevice({ url }) ? String(deviceLabel || name || '') : '', positions: [], media: null };
         this.cameras.push(camera); this._save(); this.writeConfig();
         await this._tell('PUT', camera);
         if (this.running && isNetwork(camera)) {
@@ -148,6 +149,33 @@ class CameraEngine {
         if (before.url !== c.url) { await this._tell('DELETE', before); await this._tell('PUT', c); }
         return this.describe(c);
     }
+    // Named positions of a camera that can be steered. The name is the person's. Under it is kept where the camera said it
+    // was pointing, { pan, tilt, zoom }, so the position travels in the camera's record (and so in the project) and nothing
+    // lives in the camera; or, for a camera that will not say where it points, one of its own preset numbers, chosen here.
+    _position(c, name) { const key = String(name || '').trim().toLowerCase(); return (c.positions || []).find(p => p.name.toLowerCase() === key) || null; }
+    /** Remember a position under `name`: a new one, or an existing name re-taught. `spot` is where the camera points,
+     *  { pan, tilt, zoom }, or null if it would not say, in which case a preset number is given to it. Returns the record. */
+    savePosition(id, name, spot = null) {
+        const c = this.find(id); name = String(name || '').trim().slice(0, 40);
+        if (!name) throw new Error('Give the position a name');
+        c.positions ||= [];
+        const had = this._position(c, name), position = had || { name };
+        if (spot) { delete position.preset; position.pan = spot.pan; position.tilt = spot.tilt; position.zoom = Number.isInteger(spot.zoom) ? spot.zoom : null; }
+        else {
+            delete position.pan; delete position.tilt; delete position.zoom;
+            if (!Number.isInteger(position.preset)) {
+                const preset = allocatePreset(c.positions);
+                if (preset === null) throw new Error('This camera has as many positions as it can hold; remove one first');
+                position.preset = preset;
+            }
+        }
+        if (!had) c.positions.push(position);
+        this._save();
+        return { ...position };
+    }
+    /** What is kept under a position's name, { name, pan, tilt, zoom } or { name, preset }, or null when the camera has none of that name. */
+    position(id, name) { const p = this._position(this.find(id), name); return p ? { ...p } : null; }
+    removePosition(id, name) { const c = this.find(id), p = this._position(c, name); if (!p) return false; c.positions = c.positions.filter(x => x !== p); this._save(); return true; }
     /** The stand-in picture for a simulated camera: a photo or video file, or none. */
     async setMedia(id, file) {
         const c = this.find(id);
@@ -167,7 +195,7 @@ class CameraEngine {
     async replaceAll(list) {
         const before = this.cameras;
         this.cameras = (Array.isArray(list) ? list : []).filter(c => c && typeof c.id === 'string').map(c => ({
-            id: c.id, name: String(c.name || ''), url: typeof c.url === 'string' ? c.url : '', simulate: !!c.simulate, deviceLabel: String(c.deviceLabel || ''),
+            id: c.id, name: String(c.name || ''), url: typeof c.url === 'string' ? c.url : '', simulate: !!c.simulate, deviceLabel: String(c.deviceLabel || ''), positions: cleanPositions(c.positions),
             media: c.media && typeof c.media.path === 'string' ? this._media(c.media.path) : null
         }));
         this._save(); this.writeConfig();

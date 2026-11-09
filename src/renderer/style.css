@@ -145,12 +145,29 @@ input.edit{width:100%;min-width:120px;background:#0c1620;color:var(--text);borde
 .tile figcaption{flex-wrap:wrap}
 .tile figcaption .small{flex:1 1 100%;order:1;white-space:normal;line-height:1.35}      /* the status on its own line, however long the name */
 .tile .reconnect,.tile .gear{order:2}
-.tile .ptz{order:3;flex:1 1 100%;display:flex;flex-wrap:wrap;align-items:center;gap:5px;padding-top:4px;border-top:1px solid var(--line);margin-top:2px}
-.tile .ptz button{padding:6px 0;min-width:32px;touch-action:none;-webkit-user-select:none;user-select:none}.tile .ptz button.wide{padding:6px 9px}
-.tile .ptz button:active{border-color:var(--accent);color:var(--accent)}
-.tile .ptz i{width:6px}
-.tile .ptz .ptzSet.on{border-color:var(--accent);color:var(--accent)}
-.tile .ptz input[type=range]{width:72px;margin-left:auto;accent-color:var(--accent)}
+.tile .ptz{order:3;flex:1 1 100%;padding-top:6px;border-top:1px solid var(--line);margin-top:2px}
+/* Steering controls, the same on a camera's tile and in the Stream tab's camera panel */
+.ptz{display:grid;gap:6px}.ptz[hidden]{display:none}
+.ptz-row{display:flex;flex-wrap:wrap;align-items:center;gap:5px}.ptz-row[hidden]{display:none}
+.ptz button{padding:6px 0;min-width:32px;height:auto;touch-action:none;-webkit-user-select:none;user-select:none;font-size:13px}.ptz button.wide{padding:6px 10px}
+.ptz button:active{border-color:var(--accent);color:var(--accent)}
+.ptz i{width:6px}
+.ptz input[type=range]{width:72px;margin-left:auto;accent-color:var(--accent)}
+.ptz .ptzPlace{border-color:#3c5266;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ptz .ptzPlace.editing{border-style:dashed;border-color:var(--accent);color:var(--accent)}
+.ptz .ptzRemove{border-color:#7a5a66;color:#e8b9c4;background:transparent}.ptz .ptzRemove[hidden]{display:none}
+.ptz-save input[readonly]{color:var(--muted)}
+.ptz .ptzAdd,.ptz .ptzEdit{background:transparent;color:var(--muted);border-style:dashed}
+.ptz-save input{flex:1;min-width:120px;background:#0c1620;color:var(--text);border:1px solid #3a4f63;border-radius:5px;padding:7px 9px;font:inherit;font-size:13px;-webkit-user-select:text;user-select:text}
+.ptz .primary{background:var(--accent);border-color:var(--accent);color:#10261f}
+/* The camera panel floats over the top right corner of the picture while it is open */
+.camera-panel{position:absolute;top:10px;right:10px;z-index:5;width:min(340px,calc(100% - 20px));max-height:calc(100% - 20px);overflow:auto;padding:10px 12px 12px;border:1px solid #3c5266;border-radius:10px;background:rgba(13,22,32,.94);box-shadow:0 8px 28px rgba(0,0,0,.5)}
+.camera-panel[hidden]{display:none}
+.camera-panel-head{display:flex;align-items:center;gap:8px;margin-bottom:8px}.camera-panel-head strong{font-size:13px}.camera-panel-head .small{flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.camera-panel-head select{flex:1;min-width:0;background:#0c1620;color:var(--text);border:1px solid #3a4f63;border-radius:5px;padding:5px 6px;font:inherit;font-size:12px}
+.camera-panel-head button{padding:4px 9px;height:auto;background:transparent;border-color:transparent;color:var(--muted)}
+#cameraControlToggle{margin-left:auto}#cameraControlToggle:not([hidden])+#drawerToggle{margin-left:0}
+#cameraControlToggle[aria-pressed="true"]{background:var(--accent);color:#10261f;border-color:var(--accent)}
 .tile .switch{margin-left:auto;font-size:12px}
 .tile .gear{padding:6px 10px}
 .tile .reconnect{padding:6px 10px;border-color:var(--accent);color:var(--accent);background:transparent}

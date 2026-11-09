@@ -49,7 +49,9 @@ contextBridge.exposeInMainWorld('lanecast', {
         zoom: (id, zoom) => invoke('ptz:zoom', id, zoom),
         stop: id => invoke('ptz:stop', id),
         home: id => invoke('ptz:home', id),
-        preset: (id, number, save) => invoke('ptz:preset', id, number, save)
+        savePosition: (id, name) => invoke('ptz:savePosition', id, name),
+        goPosition: (id, name) => invoke('ptz:goPosition', id, name),
+        removePosition: (id, name) => invoke('ptz:removePosition', id, name)
     },
     project: {
         info: () => invoke('project:info'),

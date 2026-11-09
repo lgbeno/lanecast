@@ -30,6 +30,8 @@ Lanecast.on('control', m => …)      // overlay: a message from the control pan
 Lanecast.on('overlay', m => …)      // control panel: a message from the overlay
 Lanecast.camera('Finish')           // cut to a camera by the name the user gave it (or id)
 Lanecast.layout({ x, y, w, h, fit })// place the camera, fractions 0–1; fit 'contain' | 'cover'
+Lanecast.position('Finish line')    // steer the program camera (PTZ) to a position the user saved under that name;
+                                    // Lanecast.position('Blocks', 'Wide') for another camera. state.cameras[i] = { id, name, steerable, positions: [names] }
 Lanecast.send({ … })                // to the theme's other pages, as on('overlay'|'control'|'dialog')
 Lanecast.dialog('settings.html', { title, width, height })   // pop out a page as a modal; Lanecast.closeDialog() closes it
 Lanecast.saveSettings({ … }); Lanecast.on('settings', s => …)   // the theme's own saved settings, per theme, across runs
@@ -45,6 +47,7 @@ Lanecast.ordinal(3)                 // "3rd"
 2. Redraw from `state` (what is on the board) and animate from events (what just happened). Rebuild DOM only when the content changed; `state` arrives ten times a second.
 3. Before the start, show the lineup (`lanes` with a `name`); during, splits as they appear; after, finishers sorted by `place`. `heat.finish` is the moment for a results board; `event.finish` for a summary or sponsor card.
 4. Direct the picture if it helps: `race.start` → `Lanecast.camera('Finish')`; `heat.finish` → back to `'Wide'` after a few seconds; `Lanecast.layout` for picture-in-picture while a board is up. Camera names are whatever the user typed; match them to the user's setup or make them configurable in the control panel.
+   A steerable camera can also be moved: cue the user's named positions from events (`heat.lineup` → `Lanecast.position('Blocks')`, `race.start` → `'Whole pool'`, first `lane.finish` → `'Finish line'`). Only names, never pan/tilt numbers; the camera needs a second or two to travel, so cue early. Use the names in `state.cameras[i].positions`, and tell the user which names the theme expects them to save.
 5. A control panel is for things a person should trigger: show/hide a graphic, a sponsor, a manual cut. It lives in a drawer down the right of the Stream tab, portrait like a phone and as tall as the picture: stack controls vertically, set `control.width` in `theme.json`, leave `height` out so the page fills the drawer (it scrolls if taller).
 6. Detailed configuration (colours, logos, titles) goes in a dialog page popped out from the control panel, saved with `saveSettings` and applied by the overlay on `'settings'`; see `themes/template/settings.html`.
 7. Test with everything simulated (Stream tab → Simulation control → Run): the simulated meet fires every event every 30–40 s. For the real view, Camera tab → Simulate a camera → a photo from the camera position.

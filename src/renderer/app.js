@@ -131,7 +131,7 @@
         if (!connected('timer') || !latest.event || !latest.heat) return;
         const view = rosters.view(), now = performance.now();
         for (const e of tracker.update(latest, view, now)) { const message = Packet.event(e); api.relay.send(JSON.stringify(message)); toTheme(message); }
-        const message = Packet.state(latest, view, { phase: tracker.phase, cameras: cameraList.map(c => ({ id: c.id, name: c.name })), camera: programCameraId() });
+        const message = Packet.state(latest, view, { phase: tracker.phase, cameras: cameraList.map(c => ({ id: c.id, name: c.name, steerable: canSteer(c), positions: canSteer(c) ? c.positions || [] : [] })), camera: programCameraId() });
         const serialized = JSON.stringify(message);
         if (serialized === lastSent && now - lastSendAt < 1000) return;
         api.relay.send(serialized); toTheme(message); lastSent = serialized; lastSendAt = now; packets++; lastPacketAt = now;
@@ -288,6 +288,58 @@
         steerable.set(camera.id, entry);
         api.ptz.probe(camera.id, again).then(info => { entry.info = info || null; }, () => { entry.info = null; }).then(() => { entry.asking = false; entry.at = Date.now(); render(); });
     }
+    /** The controls that steer one camera: pan and tilt, zoom, home, speed, and its named positions. The camera's tile and the
+     *  Stream tab's camera panel each hold a set. Returns { element, positions(names) }. */
+    function steeringControls(id) {
+        const root = document.createElement('div'); root.className = 'ptz';
+        const row = className => { const r = document.createElement('div'); r.className = 'ptz-row' + (className ? ' ' + className : ''); return r; };
+        const key = (text, title, className) => { const b = document.createElement('button'); b.type = 'button'; b.textContent = text; b.title = title; if (className) b.className = className; return b; };
+        const speed = document.createElement('input'); speed.type = 'range'; speed.min = '1'; speed.max = '10'; speed.value = '4'; speed.title = 'Speed'; speed.className = 'ptzSpeed';
+        const rate = () => Number(speed.value) / 10;
+        // A held button drives. The camera keeps going until told to stop, so the drive is renewed while the button is held
+        // (the main process stops the camera if the renewals cease) and letting go stops it at once.
+        const held = (button, drive) => {
+            let timer = null;
+            const end = () => { if (timer === null) return; clearInterval(timer); timer = null; api.ptz.stop(id).catch(() => {}); };
+            button.addEventListener('pointerdown', e => { e.preventDefault(); try { button.setPointerCapture(e.pointerId); } catch (x) { /* a synthetic pointer */ } const go = () => drive().catch(() => {}); clearInterval(timer); go(); timer = setInterval(go, 300); });
+            for (const type of ['pointerup', 'pointercancel', 'lostpointercapture']) button.addEventListener(type, end);
+            window.addEventListener('blur', end);
+            return button;
+        };
+        const drive = (text, title, pan, tilt) => held(key(text, title), () => api.ptz.move(id, pan * rate(), tilt * rate()));
+        const zoomKey = (text, title, zoom) => held(key(text, title), () => api.ptz.zoom(id, zoom * rate()));
+        const home = key('Home', 'Back to the camera’s home position', 'wide'); home.onclick = () => api.ptz.home(id).catch(showError);
+        const gap = () => document.createElement('i');
+        const moves = row(); moves.append(drive('◀', 'Pan left', -1, 0), drive('▲', 'Tilt up', 0, 1), drive('▼', 'Tilt down', 0, -1), drive('▶', 'Pan right', 1, 0), gap(), zoomKey('−', 'Zoom out', -1), zoomKey('+', 'Zoom in', 1), gap(), home, speed);
+        // Positions have names. Saving one reads where the camera points and keeps that under the name, in the camera's record
+        // (so in the project): pressing it sends the camera back there. Edit… re-teaches one to where the camera points now, or removes it.
+        const places = row('ptz-places'), form = row('ptz-save'); form.hidden = true;
+        const input = document.createElement('input'); input.placeholder = 'Name this position, e.g. Finish line'; input.maxLength = 40; input.spellcheck = false;
+        const save = key('Save', 'Store where the camera points now under this name', 'wide primary'), remove = key('Remove', 'Forget this position', 'wide ptzRemove'), cancel = key('Cancel', '', 'wide');
+        let names = [], editing = false, target = null;            // target: the position being re-taught or removed
+        const has = name => names.some(n => n.toLowerCase() === name.trim().toLowerCase());
+        const sync = () => { save.textContent = target ? 'Re-teach here' : has(input.value) ? 'Update' : 'Save'; save.disabled = !input.value.trim(); remove.hidden = !target; input.readOnly = !!target; };
+        const close = () => { form.hidden = true; target = null; };
+        const draw = () => {
+            const chips = names.map(name => {
+                const chip = key(name, editing ? `Re-teach ${name} to where the camera points now, or remove it` : `Go to ${name}`, 'wide ptzPlace' + (editing ? ' editing' : '')); chip.dataset.position = name;
+                chip.onclick = () => { if (editing) { target = name; input.value = name; form.hidden = false; sync(); } else api.ptz.goPosition(id, name).catch(showError); };
+                return chip;
+            });
+            const add = key('+ Save position', 'Name where the camera points now, to come back to it', 'wide ptzAdd'); add.onclick = () => { target = null; input.value = ''; form.hidden = false; sync(); input.focus(); };
+            const edit = key(editing ? 'Done' : 'Edit…', 'Re-teach a position to where the camera points now, or remove it', 'wide ptzEdit'); edit.hidden = !names.length; edit.onclick = () => { editing = !editing; close(); draw(); };
+            places.replaceChildren(...chips, add, edit);
+        };
+        const commit = async () => { const name = input.value.trim(); if (!name) return; save.disabled = true; try { await api.ptz.savePosition(id, name); close(); await refreshCameras(); } catch (e) { showError(e); } sync(); };
+        input.oninput = sync; save.onclick = commit; cancel.onclick = close;
+        remove.onclick = async () => { if (!target) return; try { await api.ptz.removePosition(id, target); close(); await refreshCameras(); } catch (e) { showError(e); } };
+        input.addEventListener('keydown', e => { e.stopPropagation(); if (e.key === 'Enter') { e.preventDefault(); commit(); } else if (e.key === 'Escape') { e.preventDefault(); close(); } });
+        form.append(input, save, remove, cancel); root.append(moves, places, form); draw();
+        return { element: root, positions(list) { const next = list || []; if (next.join('|') !== names.join('|')) { names = [...next]; if (!names.length) editing = false; if (target && !has(target)) close(); draw(); } } };
+    }
+    const tileSteering = new Map();                 // camera id -> the controls on its tile
+    /** A camera showing its real picture that has said it can be steered. */
+    const canSteer = camera => !!camera && !camera.simulate && !!steerable.get(camera.id)?.info;
     const tileFor = camera => {
         const figure = document.createElement('figure'); figure.className = 'tile'; figure.dataset.id = camera.id;
         const video = document.createElement('video'); video.autoplay = true; video.muted = true; video.playsInline = true;
@@ -301,36 +353,16 @@
         gear.onclick = () => openCameraDialog(camera.id);
         const again = document.createElement('button'); again.type = 'button'; again.className = 'reconnect'; again.textContent = 'Reconnect'; again.title = 'Open this camera again'; again.hidden = true;
         again.onclick = () => { players.get(camera.id)?.reconnect(); render(); };
-        // Steering, for a camera that has said it can be steered (see steerable): pan and tilt, zoom, home, four presets.
-        const ptz = document.createElement('div'); ptz.className = 'ptz'; ptz.hidden = true;
-        const key = (text, title, className) => { const b = document.createElement('button'); b.type = 'button'; b.textContent = text; b.title = title; if (className) b.className = className; return b; };
-        const speed = document.createElement('input'); speed.type = 'range'; speed.min = '1'; speed.max = '10'; speed.value = '4'; speed.title = 'Speed'; speed.className = 'ptzSpeed';
-        const rate = () => Number(speed.value) / 10;
-        // A held button drives. The camera keeps going until told to stop, so the drive is renewed while the button is held
-        // (the main process stops the camera if the renewals cease) and letting go stops it at once.
-        const held = (button, drive) => {
-            let timer = null;
-            const end = () => { if (timer === null) return; clearInterval(timer); timer = null; api.ptz.stop(camera.id).catch(() => {}); };
-            button.addEventListener('pointerdown', e => { e.preventDefault(); try { button.setPointerCapture(e.pointerId); } catch (x) { /* a synthetic pointer */ } const go = () => drive().catch(() => {}); clearInterval(timer); go(); timer = setInterval(go, 300); });
-            for (const type of ['pointerup', 'pointercancel', 'lostpointercapture']) button.addEventListener(type, end);
-            window.addEventListener('blur', end);
-            return button;
-        };
-        const drive = (text, title, pan, tilt) => held(key(text, title), () => api.ptz.move(camera.id, pan * rate(), tilt * rate()));
-        const zoomKey = (text, title, zoom) => held(key(text, title), () => api.ptz.zoom(camera.id, zoom * rate()));
-        const home = key('Home', 'Back to the camera’s home position', 'wide'); home.onclick = () => api.ptz.home(camera.id).catch(showError);
-        const set = key('Set', 'Then press a number to store where the camera points now', 'wide ptzSet'); set.onclick = () => set.classList.toggle('on');
-        const presets = [1, 2, 3, 4].map(n => { const b = key(String(n), `Go to preset ${n} (after Set: store it)`, 'ptzPreset'); b.onclick = () => { const save = set.classList.contains('on'); set.classList.remove('on'); api.ptz.preset(camera.id, n, save).catch(showError); }; return b; });
-        const gap = () => document.createElement('i');
-        ptz.append(drive('◀', 'Pan left', -1, 0), drive('▲', 'Tilt up', 0, 1), drive('▼', 'Tilt down', 0, -1), drive('▶', 'Pan right', 1, 0), gap(), zoomKey('−', 'Zoom out', -1), zoomKey('+', 'Zoom in', 1), gap(), home, gap(), ...presets, set, speed);
-        caption.append(name, badge, status, sw, again, gear, ptz); figure.append(video, caption);
+        // Steering, for a camera that has said it can be steered (see steerable): the same controls the Stream tab offers.
+        const steering = steeringControls(camera.id); steering.element.hidden = true; tileSteering.set(camera.id, steering);
+        caption.append(name, badge, status, sw, again, gear, steering.element); figure.append(video, caption);
         players.set(camera.id, new Player(camera, video));
         return figure;
     };
     async function refreshCameras() {
         try { cameraList = await api.cameras.list(); } catch (e) { cameraList = []; }
         const list = $('cameraList'), have = new Set(cameraList.map(c => c.id));
-        for (const figure of [...list.children]) if (!have.has(figure.dataset.id)) { players.get(figure.dataset.id)?.stop(); players.delete(figure.dataset.id); figure.remove(); }
+        for (const figure of [...list.children]) if (!have.has(figure.dataset.id)) { players.get(figure.dataset.id)?.stop(); players.delete(figure.dataset.id); tileSteering.delete(figure.dataset.id); figure.remove(); }
         for (const camera of cameraList) {
             if (players.has(camera.id)) players.get(camera.id).update(camera);
             else list.append(tileFor(camera));
@@ -500,7 +532,8 @@
             figure.querySelector('.name').textContent = c.name;
             figure.querySelector('.sim-badge').hidden = !c.simulate;
             const box = figure.querySelector('.camSim'); if (box.checked !== c.simulate) box.checked = c.simulate; box.disabled = !c.url;
-            figure.querySelector('.ptz').hidden = c.simulate || !steerable.get(c.id)?.info;
+            const steering = tileSteering.get(c.id);
+            if (steering) { steering.element.hidden = !canSteer(c); steering.positions(c.positions); }
             // One button for a camera on this computer: Disconnect while it is open, Stop while looking, else Reconnect.
             const again = figure.querySelector('.reconnect'), looking = player.looking, open = player.state === 'open';
             again.hidden = !player.isDevice; again.disabled = player.state === 'connecting' && !looking;
@@ -594,6 +627,15 @@
                 if (lastSent) toFrame(from, JSON.parse(lastSent));
                 renderThemes(); render(); break;
             case 'camera': { const cam = cameraByRef(m.select); if (cam) { programCamera = cam.id; lastSent = ''; render(); } break; }
+            case 'position': {
+                // Steer a camera to a position the person saved under that name: the program camera, unless the theme names another.
+                const cam = m.camera === undefined || m.camera === null ? cameraList.find(c => c.id === programCameraId()) : cameraByRef(m.camera);
+                const note = text => { themes.log.push(`${new Date().toLocaleTimeString()} ${from}: ${text}`); if (themes.log.length > 60) themes.log.shift(); renderThemes(); };
+                if (!cam) note(`position ${JSON.stringify(m.name)}: no such camera`);
+                else if (!canSteer(cam)) note(`position ${JSON.stringify(m.name)}: ${cam.name} cannot be steered`);
+                else api.ptz.goPosition(cam.id, String(m.name)).then(ok => { if (!ok) note(`${cam.name} has no position named ${JSON.stringify(m.name)}`); }, () => {});
+                break;
+            }
             case 'layout': setLayout(m); break;
             case 'send': for (const which of Object.keys(frames)) if (which !== from) toFrame(which, { type: from, data: m.data }); break;   // to the theme's other pages
             case 'settings':
@@ -642,7 +684,34 @@
         return tr;
     };
     const ago = at => `${Math.round((performance.now() - at) / 1000)} s ago`;
+    // ---- camera control on the Stream tab ------------------------------------------------
+    // The same steering as on a camera's tile, in a small panel over the corner of the picture: for the camera on the
+    // program, or any other that can be steered (to frame it before cutting to it).
+    let panelCamera = null, panelFor = null, panelSteering = null;       // the one chosen (null: follow the program), the one shown, its controls
+    function renderCameraPanel() {
+        const list = cameraList.filter(canSteer), toggle = $('cameraControlToggle'), panel = $('cameraPanel');
+        toggle.hidden = !list.length;
+        if (!list.length) { panel.hidden = true; toggle.setAttribute('aria-pressed', 'false'); panelFor = null; panelSteering = null; return; }
+        if (panel.hidden) return;
+        const want = list.find(c => c.id === panelCamera) || list.find(c => c.id === programCameraId()) || list[0];
+        const select = $('cameraPanelSelect'), key = list.map(c => c.id + ':' + c.name).join('|');
+        if (select.dataset.key !== key) { select.replaceChildren(...list.map(c => new Option(c.name, c.id))); select.dataset.key = key; }
+        if (select.value !== want.id) select.value = want.id;
+        select.hidden = list.length < 2; $('cameraPanelName').textContent = list.length < 2 ? want.name : '';
+        if (panelFor !== want.id) { panelFor = want.id; panelSteering = steeringControls(want.id); $('cameraPanelBody').replaceChildren(panelSteering.element); }
+        panelSteering.positions(want.positions);
+    }
+    $('cameraControlToggle').onclick = () => {
+        const panel = $('cameraPanel'); panel.hidden = !panel.hidden;
+        $('cameraControlToggle').setAttribute('aria-pressed', String(!panel.hidden));
+        if (panel.hidden) panelCamera = null;
+        renderCameraPanel();
+    };
+    $('cameraPanelClose').onclick = () => $('cameraControlToggle').click();
+    $('cameraPanelSelect').onchange = e => { panelCamera = e.target.value; renderCameraPanel(); };
+
     function render() {
+        renderCameraPanel();
         const camerasLive = renderCameras();
         const ready = {
             stream: renderProgram(),                                            // the program has a picture
