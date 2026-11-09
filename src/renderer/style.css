@@ -79,6 +79,15 @@ input.edit{width:100%;min-width:120px;background:#0c1620;color:var(--text);borde
 .event-title{font-size:20px;margin:18px 0 4px;letter-spacing:0;text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .packet{font-size:12px;max-height:50vh;overflow:auto;margin:10px 0 0;background:#0c1620;border:1px solid var(--line);border-radius:6px;padding:12px;-webkit-user-select:text;user-select:text}
 .tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:14px;margin-top:14px}
+/* The Camera tab: finding on the left, the cameras one under another on the right; each side scrolls by itself */
+.columns.camera-layout{grid-template-columns:minmax(300px,1fr) 2fr;align-items:start}
+.camera-layout>article{max-height:calc(100vh - 112px);overflow:auto;box-sizing:border-box}
+.camera-find .actions{margin-top:0}.camera-find .actions.manual{margin-top:16px}
+.camera-rows{display:flex;flex-direction:column;gap:12px}.camera-rows:empty{display:none}
+.camera-rows .tile{display:grid;grid-template-columns:minmax(200px,38%) 1fr;align-items:start}
+.camera-rows .tile figcaption{padding:12px 14px}
+.camera-have #engineStatus{margin:14px 0 0}.camera-have #noCameras{margin:0}
+@media(max-width:860px){.columns.camera-layout{grid-template-columns:1fr}.camera-layout>article{max-height:none}.camera-rows .tile{grid-template-columns:1fr}}
 .tile{margin:0;background:#0c1620;border:1px solid var(--line);border-radius:10px;overflow:hidden}
 .tile video{display:block;width:100%;aspect-ratio:16/9;background:#060a0f;object-fit:contain}
 .tile figcaption{display:flex;align-items:center;gap:10px;padding:10px 12px}
@@ -133,7 +142,10 @@ input.edit{width:100%;min-width:120px;background:#0c1620;color:var(--text);borde
 .found{display:grid;gap:8px;margin:8px 0}.found:empty{display:none}.found>p{margin:0}
 #deviceNote{margin:6px 0 0}#deviceNote:empty{display:none}
 .found-item{border:1px solid var(--line);border-radius:8px;background:#0c1620;padding:10px 12px;font-size:13px}
-.found-head{display:flex;align-items:center;gap:10px}.found-head .small{flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.found-head button{padding:7px 12px}
+.found-head{display:grid;grid-template-columns:1fr auto;column-gap:10px;row-gap:2px;align-items:center}
+.found-head strong,.found-head .small{grid-column:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.found-head .small:empty{display:none}
+.found-head button{grid-column:2;grid-row:1 / span 2;padding:7px 12px}
 .found-item p{margin:8px 0 0;line-height:1.4}
 .found-item .fix{display:flex;align-items:center;gap:8px;margin-top:8px}
 .found-item .fix code{flex:1;padding:7px 9px;border:1px solid var(--line);border-radius:6px;background:#060a0f;font-size:12px;overflow-wrap:anywhere;-webkit-user-select:text;user-select:text}
