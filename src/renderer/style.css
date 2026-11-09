@@ -145,6 +145,12 @@ input.edit{width:100%;min-width:120px;background:#0c1620;color:var(--text);borde
 .tile figcaption{flex-wrap:wrap}
 .tile figcaption .small{flex:1 1 100%;order:1;white-space:normal;line-height:1.35}      /* the status on its own line, however long the name */
 .tile .reconnect,.tile .gear{order:2}
+.tile .ptz{order:3;flex:1 1 100%;display:flex;flex-wrap:wrap;align-items:center;gap:5px;padding-top:4px;border-top:1px solid var(--line);margin-top:2px}
+.tile .ptz button{padding:6px 0;min-width:32px;touch-action:none;-webkit-user-select:none;user-select:none}.tile .ptz button.wide{padding:6px 9px}
+.tile .ptz button:active{border-color:var(--accent);color:var(--accent)}
+.tile .ptz i{width:6px}
+.tile .ptz .ptzSet.on{border-color:var(--accent);color:var(--accent)}
+.tile .ptz input[type=range]{width:72px;margin-left:auto;accent-color:var(--accent)}
 .tile .switch{margin-left:auto;font-size:12px}
 .tile .gear{padding:6px 10px}
 .tile .reconnect{padding:6px 10px;border-color:var(--accent);color:var(--accent);background:transparent}

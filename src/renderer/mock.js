@@ -102,6 +102,10 @@
                 };
             })()
         },
+        // Design mode: every network camera can be steered, and the commands go to the console.
+        ptz: { probe: async id => { const c = cameras.find(c => c.id === id); return c && /^rtsp/.test(c.url) ? { protocol: 'VISCA', port: 1259, framed: false } : null; },
+            move: async (...a) => { console.log('ptz move', ...a); return true; }, zoom: async (...a) => { console.log('ptz zoom', ...a); return true; }, stop: async id => { console.log('ptz stop', id); return true; },
+            home: async id => { console.log('ptz home', id); return true; }, preset: async (...a) => { console.log('ptz preset', ...a); return true; } },
         project: { info: async () => ({ path: null, name: localStorage.getItem('mock-project') || 'Design mode', named: true }), rename: async name => { localStorage.setItem('mock-project', name); return { path: null, name: name || 'Design mode', named: true }; }, new: async () => ({ path: null, name: 'Design mode', named: true }), open: async () => { throw new Error('Design mode cannot open files; run the app for that'); }, save: async () => { throw new Error('Design mode cannot save files; run the app for that'); }, saveAs: async () => { throw new Error('Design mode cannot save files; run the app for that'); }, onChange: cb => on('project:changed', cb) },
         themes: {
             list: async () => [

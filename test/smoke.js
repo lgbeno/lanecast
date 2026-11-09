@@ -93,6 +93,24 @@ app.on('browser-window-created', (event, win) => {
         await js(`document.getElementById('camName').value = 'Finish'; document.getElementById('camUrl').value = 'rtsp://127.0.0.1:1/none'`); await click('camAddButton', 1500);
         const two = await js(`({ label: ${text('camerasLabel')}, tiles: [...document.querySelectorAll('.tile .name')].map(n => n.textContent), status: ${text('camAddStatus')} })`);
         check(two.label === 'Cameras' && two.tiles.join(',') === 'Pool,Finish', `a second camera: tab reads Cameras, tiles ${two.tiles.join(' and ')}`);
+        // Steering: a stand-in camera at that address answers the version question, so the tile grows its controls, and they send.
+        const steered = [], stand = require('node:dgram').createSocket('udp4');
+        stand.on('message', (buf, from) => { steered.push(buf.toString('hex')); if (buf.toString('hex') === '81090002ff') stand.send(Buffer.from('905002010607101501ff', 'hex'), from.port, from.address); });
+        const standing = await new Promise(resolve => { stand.once('error', () => resolve(false)); stand.bind(1259, '127.0.0.1', () => resolve(true)); });
+        if (!standing) console.log('SKIP steering: UDP 1259 is in use on this computer');
+        else {
+            const finishTile = `[...document.querySelectorAll('.tile')].find(t => t.querySelector('.name').textContent === 'Finish')`;
+            await js(`document.getElementById('findDevices').click()`);                                    // Find cameras asks every camera again
+            let shown = false; for (let i = 0; i < 40 && !shown; i++) { await wait(300); shown = await js(`!${finishTile}.querySelector('.ptz').hidden && !document.getElementById('findDevices').disabled`); }
+            const poolHidden = await js(`[...document.querySelectorAll('.tile')].find(t => t.querySelector('.name').textContent === 'Pool').querySelector('.ptz').hidden`);
+            check(shown && poolHidden, 'a camera that answers the steering question shows pan, tilt, zoom and presets on its tile; the stand-in camera does not');
+            await js(`(() => { const keys = [...${finishTile}.querySelectorAll('.ptz button')]; const right = keys.find(b => b.textContent === '▶'); right.dispatchEvent(new PointerEvent('pointerdown', { pointerId: 7, bubbles: true })); setTimeout(() => right.dispatchEvent(new PointerEvent('pointerup', { pointerId: 7, bubbles: true })), 450); })()`); await wait(900);
+            await js(`(() => { const keys = [...${finishTile}.querySelectorAll('.ptz button')]; keys.find(b => b.textContent === 'Set').click(); keys.find(b => b.textContent === '2').click(); keys.find(b => b.textContent === '2').click(); keys.find(b => b.textContent === 'Home').click(); })()`); await wait(500);
+            const drives = steered.filter(m => m === '810106010a010203ff').length, sent = steered.filter(m => m !== '81090002ff');
+            check(drives >= 2 && sent.includes('8101060101010303ff') && sent.indexOf('8101060101010303ff') > sent.indexOf('810106010a010203ff'), `holding ▶ drives right at the chosen speed, renewed while held (${drives} times), and letting go stops`);
+            check(sent.slice(-3).join() === '8101043f0102ff,8101043f0202ff,81010604ff', `Set then 2 stores preset 2, 2 again goes to it, Home goes home: ${sent.slice(-3).join(' ')}`);
+            stand.close();
+        }
         await js(`[...document.querySelectorAll('.tile')].find(t => t.querySelector('.name').textContent === 'Finish').querySelector('.camSim').click()`); await wait(1200);
         const finish = await js(`(() => { const t = [...document.querySelectorAll('.tile')].find(t => t.querySelector('.name').textContent === 'Finish'); return { badge: !t.querySelector('.sim-badge').hidden, status: t.querySelector('.small').textContent, tabBadge: ${badges} }; })()`);
         check(finish.badge && /^No stand-in yet/.test(finish.status), `Finish switched to simulated on its own: ${finish.status}`);
