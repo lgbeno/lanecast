@@ -71,7 +71,9 @@ contextBridge.exposeInMainWorld('lanecast', {
         active: () => invoke('themes:active'),
         select: id => invoke('themes:select', id),
         create: name => invoke('themes:create', name),
-        openFolder: () => invoke('themes:openFolder'),
+        openFolder: id => invoke('themes:openFolder', id),
+        remove: id => invoke('themes:remove', id),
+        onChange: callback => on('themes:changed', callback),
         folder: () => invoke('themes:folder')
     },
     store: {

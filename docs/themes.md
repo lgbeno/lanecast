@@ -27,7 +27,7 @@ my-theme/
 
 `control` is optional; a bare string is just the page. The control panel is shown in a drawer down the right side of the Stream tab, portrait like a phone, as tall as the picture; `width` (pixels) is the width the drawer opens at (the user can drag it), and `height` is only needed if the page should not fill the drawer's height (the drawer scrolls if it is taller). The user can hide the drawer for the full picture.
 
-Built-in themes live in `themes/` in the repository and ship with the app. Yours live in the app's data folder, `themes/` inside it: **Theme tab → Open my themes folder**. **New theme from the template** copies `themes/template/` there under your name and switches to it. After editing files, press **Reload** on the Theme tab.
+Built-in themes live in `themes/` in the repository and ship with the app. Yours live in the app's data folder, `themes/` inside it. **Theme tab → New theme…** copies `themes/template/` there under the name you give and switches to it; **Open folder**, beside the theme in use, opens it. The app follows a theme of your own on disk: save a file and the overlay and control panel are read again by themselves (**Reload** is there should that ever not happen). A theme's `Lanecast.log(…)` lines and the app's notes about it show in the **Console** under the theme in use.
 
 ## The pages
 
@@ -170,4 +170,4 @@ What the user chooses is kept with `Lanecast.saveSettings({ accent: '#ffcc33', l
 
 ## For AI assistants
 
-If you are helping someone make a theme: copy `themes/template/` (or ask them to press New theme from the template), keep the `../lanecast-theme.js` script tag, draw with HTML/CSS in `vh`, subscribe to `state` for what is on the board and to the events for what just happened, and test with everything simulated. The messages above are the whole interface; there is nothing else to learn. The repository has a skill for this at `.claude/skills/lanecast-theme/SKILL.md`.
+If you are helping someone make a theme: copy `themes/template/` (or ask them to press **New theme…** on the Theme tab, then **Open folder**), keep the `../lanecast-theme.js` script tag, draw with HTML/CSS in `vh`, subscribe to `state` for what is on the board and to the events for what just happened, and test with everything simulated. The messages above are the whole interface; there is nothing else to learn. The repository has a skill for this at `.claude/skills/lanecast-theme/SKILL.md`.

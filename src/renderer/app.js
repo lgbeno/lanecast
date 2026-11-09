@@ -690,29 +690,67 @@
         if (theme?.id !== themes.activeId || !themes.active) { themes.activeId = theme?.id || null; loadTheme(theme); }
         renderThemes();
     }
+    // The Theme tab, on the same lines as the Camera tab: every theme one under another on the left, each with Use; the one in
+    // use on the right, with its state, its folder and its console. Making a new one waits behind New theme…
+    const SOURCES = { 'built-in': 'Built in', mine: 'Mine', project: 'This project' };
+    let themesDrawn = '';
     function renderThemes() {
-        const list = $('themeList');
-        list.replaceChildren(...themes.list.map(t => {
-            const card = document.createElement('figure'); card.className = 'theme' + (t.id === themes.activeId ? ' active' : '');
-            const h = document.createElement('h3'); h.textContent = t.name; const v = document.createElement('span'); v.className = 'count'; v.textContent = t.version; h.append(v);
-            const src = document.createElement('div'); src.className = 'source'; src.textContent = (t.source === 'mine' ? 'My themes' : 'Built in') + (t.control ? ' · control panel' : '');
-            const p = document.createElement('p'); p.className = 'small'; p.textContent = t.description;
-            const actions = document.createElement('div'); actions.className = 'actions';
-            const use = document.createElement('button'); use.textContent = t.id === themes.activeId ? 'In use' : 'Use'; use.disabled = t.id === themes.activeId; use.className = t.id === themes.activeId ? '' : 'primary';
-            use.onclick = async () => { try { await api.themes.select(t.id); themes.activeId = t.id; loadTheme(t); renderThemes(); } catch (e) { showError(e); } };
-            actions.append(use); card.append(h, src, p, actions); return card;
-        }));
-        $('themeStatus').textContent = themes.active ? `${themes.active.name} · ${themes.ready.overlay ? 'overlay ready' : 'loading overlay'}${themes.active.control ? themes.ready.control ? ' · control panel ready' : ' · loading control panel' : ''}` : 'no theme';
-        $('themeLog').textContent = themes.log.length ? themes.log.join('\n') : 'Nothing logged yet. A theme\'s Lanecast.log(…) shows here.';
+        const el = (tag, className, text) => { const node = document.createElement(tag); if (className) node.className = className; if (text !== undefined) node.textContent = text; return node; };
+        const key = themes.list.map(t => [t.id, t.name, t.version, t.source, t.description, t.control ? 1 : 0].join('\u0001')).join('\u0002') + '#' + themes.activeId;
+        if (key !== themesDrawn) {                       // drawn again only when the themes or the choice changed, so a button being pressed is not pulled from under the pointer
+            themesDrawn = key;
+            $('themeList').replaceChildren(...themes.list.map(t => {
+                const active = t.id === themes.activeId, box = el('div', 'found-item theme-item' + (active ? ' active' : '')), head = el('div', 'found-head');
+                box.dataset.id = t.id;
+                head.append(el('strong', '', t.name), el('span', 'small', [SOURCES[t.source] || '', t.version ? 'v' + t.version : '', t.control ? 'control panel' : ''].filter(Boolean).join(' · ')));
+                const use = el('button', 'use' + (active ? '' : ' primary'), active ? 'In use' : 'Use'); use.type = 'button'; use.disabled = active;
+                use.onclick = async () => { try { await api.themes.select(t.id); themes.activeId = t.id; loadTheme(t); renderThemes(); } catch (e) { showError(e); } };
+                head.append(use);
+                if (t.source === 'mine') {
+                    // One of your own can be removed: asked once more in place; its folder goes to the Trash.
+                    const remove = el('button', 'remove', '✕'); remove.type = 'button'; remove.title = 'Remove this theme (its folder goes to the Trash)';
+                    let armed = null;
+                    const disarm = () => { clearTimeout(armed); armed = null; remove.textContent = '✕'; remove.classList.remove('sure'); };
+                    remove.onclick = async () => {
+                        if (armed === null) { remove.textContent = 'Remove?'; remove.classList.add('sure'); armed = setTimeout(disarm, 4000); return; }
+                        disarm(); hideError();
+                        try { await api.themes.remove(t.id); if (themes.activeId === t.id) themes.activeId = null; await refreshThemes(); } catch (e) { showError(e); }
+                    };
+                    remove.addEventListener('blur', disarm);
+                    head.append(remove);
+                }
+                box.append(head); if (t.description) box.append(el('p', 'small', t.description));
+                return box;
+            }));
+        }
+        const now = themes.active;
+        $('themeName').textContent = now ? now.name : 'No theme';
+        $('themeState').textContent = now ? ` · ${themes.ready.overlay ? 'overlay ready' : 'loading overlay'}${now.control ? themes.ready.control ? ' · control panel ready' : ' · loading control panel' : ''}` : '';
+        const own = !!now && now.source !== 'built-in';
+        $('themeAbout').textContent = !now ? '' : own ? 'Edit its files and the stream follows as you save.' : 'Built in. To change how the stream looks, make a theme of your own with New theme…';
+        $('openThemes').hidden = !own;
+        $('themeConsole').hidden = !themes.log.length;
+        $('themeLog').textContent = themes.log.join('\n');
     }
-    $('newTheme').onclick = async () => {
-        hideError(); const name = $('newThemeName').value.trim();
+    // New theme…: a name is all it asks; the theme starts from the template, in its own folder, and is switched to.
+    $('newThemeOpen').onclick = () => { hideError(); $('newThemeName').value = ''; $('themeNote').textContent = ''; $('newThemeDialog').showModal(); $('newThemeName').focus(); };
+    $('newThemeCancel').onclick = () => $('newThemeDialog').close();
+    async function newTheme() {
+        const name = $('newThemeName').value.trim();
         if (!name) { $('themeNote').textContent = 'Give the theme a name first.'; return; }
-        try { const id = await api.themes.create(name); await api.themes.select(id); $('newThemeName').value = ''; await refreshThemes(id); $('themeNote').textContent = `Made ${name} from the template and switched to it. Open the folder to edit it; changes show after Reload.`; }
+        $('newTheme').disabled = true;
+        try { const id = await api.themes.create(name); await api.themes.select(id); await refreshThemes(id); $('newThemeDialog').close(); }
         catch (e) { $('themeNote').textContent = e.message.replace(/^Error invoking remote method '[^']+': (Error: )?/, ''); }
-    };
-    $('openThemes').onclick = async () => { try { const r = await api.themes.openFolder(); if (r) $('themeNote').textContent = r; } catch (e) { showError(e); } };
-    $('reloadThemes').onclick = () => { const id = themes.activeId; themes.activeId = null; refreshThemes(id); };
+        $('newTheme').disabled = false;
+    }
+    $('newTheme').onclick = newTheme;
+    $('newThemeName').addEventListener('keydown', e => { e.stopPropagation(); if (e.key === 'Enter') { e.preventDefault(); newTheme(); } });
+    $('openThemes').onclick = async () => { try { const problem = await api.themes.openFolder(themes.activeId); if (problem) showError(new Error(problem)); } catch (e) { showError(e); } };
+    $('themeLogClear').onclick = () => { themes.log.length = 0; renderThemes(); };
+    const reloadTheme = () => { const id = themes.activeId; themes.activeId = null; return refreshThemes(id); };
+    $('reloadThemes').onclick = reloadTheme;
+    // Themes are followed on disk: the list keeps up with the folder, and the theme in use is read again when its own files change.
+    if (api.themes.onChange) api.themes.onChange(ids => { if (Array.isArray(ids) && (ids.includes(themes.activeId) || ids.includes('*'))) reloadTheme(); else refreshThemes(); });
 
     // ---- display -------------------------------------------------------------------------
     const row = cells => {

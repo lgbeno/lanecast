@@ -14,6 +14,7 @@ const WebSocket = require('ws');
 // Nothing is simulated by default; this is how the choice persists from session to session.
 const userData = fs.mkdtempSync(path.join(os.tmpdir(), 'lanecast-smoke-'));
 app.setPath('userData', userData);
+process.env.LANECAST_DELETE = '1';                  // a theme removed in this run is deleted, not sent to this computer's Trash
 // The project saved last time has since been deleted: the app must still start (it once died on this line), untitled again.
 fs.writeFileSync(path.join(userData, 'lanecast.json'), JSON.stringify({ simulate: { timer: true, events: true }, relayPort: 18080, projectPath: path.join(userData, 'Gone.lanecast'),
     cameras: [{ id: 'cam-pool', name: 'Pool', url: '', simulate: true, media: { path: path.join(__dirname, '..', 'build', 'icon.png') } }] }));
@@ -239,9 +240,10 @@ app.on('browser-window-created', (event, win) => {
         check(/^Classic · overlay ready$/.test(cams.theme) && cams.ready.theme, `the Classic theme is up and the Theme dot is green: ${cams.theme}`);
         // Themes: switch to the template (which has a control panel) and back.
         await js(`document.getElementById('tab-theme').click()`); await wait(300);
-        const cards = await js(`[...document.querySelectorAll('.theme h3')].map(h => h.firstChild.textContent)`);
+        const cards = await js(`[...document.querySelectorAll('#themeList .theme-item strong')].map(n => n.textContent)`);
         check(cards.join(',') === 'Classic,Template', 'the built-in themes are listed: ' + cards.join(', '));
-        await js(`[...document.querySelectorAll('.theme')].find(c => c.querySelector('h3').firstChild.textContent === 'Template').querySelector('button').click()`); await wait(2500);
+        const useTheme = name => js(`[...document.querySelectorAll('#themeList .theme-item')].find(c => c.querySelector('strong').textContent === ${JSON.stringify(name)}).querySelector('.use').click()`);
+        await useTheme('Template'); await wait(2500);
         await js(`document.getElementById('tab-stream').click()`); await wait(1200);
         const tpl = await js(`(() => { const stage = document.getElementById('stage').getBoundingClientRect(), d = document.getElementById('drawer'), dr = d.getBoundingClientRect(); return { status: ${text('themeStatus')}, drawer: !d.hidden, src: document.getElementById('controlFrame').src, toggle: !document.getElementById('drawerToggle').hidden,
             right: dr.left >= stage.right, sameHeight: Math.abs(dr.height - stage.height) < 2, width: dr.width, fits: dr.bottom <= window.innerHeight && stage.bottom <= window.innerHeight && document.documentElement.scrollHeight <= window.innerHeight + 1 }; })()`);
@@ -269,9 +271,33 @@ app.on('browser-window-created', (event, win) => {
         check(hidden.drawer && hidden.width > before && hidden.label === 'Theme controls', `drawer hidden, stage grows from ${Math.round(before)} to ${Math.round(hidden.width)}px`);
         await click('drawerToggle', 500);
         check(await js(`!document.getElementById('drawer').hidden`), 'drawer shown again');
-        await js(`document.getElementById('tab-theme').click(); [...document.querySelectorAll('.theme')].find(c => c.querySelector('h3').firstChild.textContent === 'Classic').querySelector('button').click()`); await wait(2000);
+        await js(`document.getElementById('tab-theme').click()`); await useTheme('Classic'); await wait(2000);
         const back = await js(`({ status: ${text('themeStatus')}, drawer: document.getElementById('drawer').hidden, toggle: document.getElementById('drawerToggle').hidden })`);
         check(/^Classic · overlay ready$/.test(back.status) && back.drawer && back.toggle, `back to Classic, drawer and its toggle gone: ${back.status}`);
+        // The Theme tab is laid out like the Camera tab: every theme on the left with Use, the one in use on the right; making one waits behind New theme…
+        const themeTab = await js(`(() => { const items = [...document.querySelectorAll('#themeList .theme-item')]; return { left: document.getElementById('themeFind').getBoundingClientRect().x, right: document.querySelector('.theme-now').getBoundingClientRect().x,
+            rows: items.map(i => [i.querySelector('strong').textContent, i.querySelector('.small').textContent, i.querySelector('.use').textContent, i.classList.contains('active')].join('|')), stacked: items.length > 1 && items[1].getBoundingClientRect().y > items[0].getBoundingClientRect().y && items[1].getBoundingClientRect().x === items[0].getBoundingClientRect().x,
+            name: ${text('themeName')}, folder: !document.getElementById('openThemes').hidden, console: !document.getElementById('themeConsole').hidden, dialog: document.getElementById('newThemeDialog').open, fields: !!document.getElementById('newThemeDialog').querySelector('#newThemeName') }; })()`);
+        check(themeTab.left < themeTab.right && themeTab.stacked && themeTab.rows[0] === 'Classic|Built in · v1.0.0|In use|true' && /^Template\|Built in · v[\d.]+ · control panel\|Use\|false$/.test(themeTab.rows[1]) && themeTab.name === 'Classic' && !themeTab.folder && !themeTab.dialog && themeTab.fields,
+            `the Theme tab lists every theme on the left with Use, and shows the one in use on the right: ${themeTab.rows.join(' / ')}`);
+        // New theme…: a name, and a theme of your own starts from the template and is switched to.
+        await js(`document.getElementById('newThemeOpen').click()`); await wait(300);
+        await js(`document.getElementById('newThemeName').value = 'Smoke Theme'; document.getElementById('newTheme').click()`);
+        for (let i = 0; i < 30 && await js(`document.getElementById('newThemeDialog').open`); i++) await wait(300);
+        await wait(2500);
+        const made = await js(`({ status: ${text('themeStatus')}, about: ${text('themeAbout')}, folder: !document.getElementById('openThemes').hidden, row: (i => i && [i.querySelector('.small').textContent, i.querySelector('.use').textContent, !!i.querySelector('.remove')].join('|'))([...document.querySelectorAll('#themeList .theme-item')].find(i => i.querySelector('strong').textContent === 'Smoke Theme')), overlay: document.getElementById('overlayFrame').src })`);
+        const themeFolder = path.join(userData, 'themes', 'smoke-theme');
+        check(/^Smoke Theme · overlay ready · control panel ready$/.test(made.status) && made.folder && /as you save/.test(made.about) && /^Mine · v[\d.]+ · control panel\|In use\|true$/.test(made.row) && made.overlay.startsWith('theme://u-smoke-theme/') && fs.existsSync(path.join(themeFolder, 'overlay.html')),
+            `New theme… makes one from the template, in its own folder, and switches to it: ${made.status}`);
+        // Saving one of its files is enough: the theme in use is read again by itself.
+        fs.appendFileSync(path.join(themeFolder, 'overlay.html'), '\n<meta name="smoke-marker" content="saved">\n');
+        let followed = false; for (let i = 0; i < 20 && !followed; i++) { await wait(400); const f = win.webContents.mainFrame.framesInSubtree.find(f => f.url.startsWith('theme://u-smoke-theme/overlay.html')); followed = !!f && await f.executeJavaScript(`!!document.querySelector('meta[name="smoke-marker"]')`).catch(() => false); }
+        check(followed, 'a theme of your own is followed as it is saved: the overlay was read again with nobody pressing Reload');
+        // Removing it: ✕, once more in place, and the stream is back on Classic.
+        const removeTheme = `[...document.querySelectorAll('#themeList .theme-item')].find(i => i.querySelector('strong').textContent === 'Smoke Theme').querySelector('.remove')`;
+        await js(`${removeTheme}.click()`); await wait(200); const sure = await js(`${removeTheme}.textContent`); await js(`${removeTheme}.click()`); await wait(2500);
+        const gone = await js(`({ rows: [...document.querySelectorAll('#themeList .theme-item strong')].map(n => n.textContent).join(), status: ${text('themeStatus')} })`);
+        check(sure === 'Remove?' && gone.rows === 'Classic,Template' && /^Classic · overlay ready$/.test(gone.status) && !fs.existsSync(themeFolder), `a theme of your own is removed from its row, asking once more; the stream goes back to Classic: ${gone.status}`);
         await js(`document.getElementById('tab-stream').click()`); await wait(300);
 
         if (shot) {

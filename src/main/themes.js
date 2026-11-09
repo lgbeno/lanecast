@@ -69,6 +69,19 @@ class Themes {
             return new Response(body, { status: 200, headers: { 'Content-Type': type, 'Access-Control-Allow-Origin': '*', 'Cache-Control': 'no-store' } });
         } catch (e) { return new Response('Not found', { status: 404 }); }
     }
+    /** Tell when themes change on disk: onChange(ids) with the ids of the themes whose files were touched ('*' when the shared runtime was).
+     *  The list is to be read again either way, since a theme may have come or gone. This is what lets the window follow a theme as
+     *  it is edited, with nobody pressing Reload. Returns a function that stops the watch. */
+    watch(onChange) {
+        const watchers = [], touched = new Set(); let timer = null;
+        const report = id => { if (id) touched.add(id); clearTimeout(timer); timer = setTimeout(() => { const ids = [...touched]; touched.clear(); onChange(ids); }, 400); };
+        const first = file => String(file || '').split(/[\\/]/)[0];
+        const on = (dir, idOf) => { try { watchers.push(fs.watch(dir, { recursive: true }, (event, file) => report(idOf(first(file))))); } catch (e) { /* not a folder that can be watched (inside the packaged app, say) */ } };
+        try { fs.mkdirSync(this.userDir, { recursive: true }); } catch (e) { /* it will be made when a theme is */ }
+        on(this.userDir, name => name ? 'u-' + slug(name) : '');
+        on(BUILTIN, name => name === 'lanecast-theme.js' ? '*' : name && !name.includes('.') ? 'b-' + slug(name) : '');      // in development the built-in ones are edited too
+        return () => { for (const w of watchers) { try { w.close(); } catch (e) { /* closed */ } } clearTimeout(timer); };
+    }
     /** Copy the template into the user's themes folder under a new name; returns the new theme's id. */
     async createFromTemplate(name) {
         const folder = slug(name); if (!folder) throw new Error('Give the theme a name');

@@ -9,10 +9,10 @@ A theme is a folder: `theme.json`, `overlay.html` (drawn over the picture), opti
 
 ## Start
 
-- A new theme: copy `themes/template/` into the user's themes folder (Theme tab → Open my themes folder; or they press **New theme from the template**). Give it a name in `theme.json`.
+- A new theme: the user presses **New theme…** on the Theme tab and names it (that copies `themes/template/` into their themes folder and switches to it), then **Open folder** shows where it is. Or copy `themes/template/` there yourself and give it a name in `theme.json`.
 - An existing theme: edit it in place. Built-in themes under `themes/` in the repository are examples; the user's are in the app's data folder.
 - Keep this script tag in every page, exactly: `<script src="../lanecast-theme.js"></script>`.
-- After changes, the user presses **Reload** on the Theme tab (or switches theme and back).
+- Changes show as files are saved: the app follows the theme in use on disk and reads it again. **Reload** on the Theme tab is the fallback.
 
 ## The interface (everything there is)
 
