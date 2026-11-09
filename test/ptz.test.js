@@ -76,13 +76,14 @@ test('positions have names; under each is where the camera pointed, or a preset 
 const camera = () => new Promise(resolve => {
     const socket = dgram.createSocket('udp4'), got = [];
     const ANSWERS = { '81090002ff': '905002010607101501ff', '81090612ff': '90500001020300000405ff', '81090447ff': '905001020304ff', '81090448ff': '90500a0b0c0dff', '81090438ff': '905002ff' };     // version; pan 0x0123 tilt 0x0045; zoom 0x1234; focus 0xabcd; autofocus
-    const cam = { got, slow: 0, refuse: false, close: () => new Promise(done => socket.close(done)) };
+    const pending = new Set();                                                   // replies still to come: dropped when the camera is closed, so nothing outlives the test
+    const cam = { got, slow: 0, refuse: false, close: () => { for (const t of pending) clearTimeout(t); pending.clear(); return new Promise(done => socket.close(done)); } };
     socket.on('message', (buf, from) => {
         const hex = buf.toString('hex'), reply = text => { try { socket.send(Buffer.from(text, 'hex'), from.port, from.address); } catch (e) { /* closed */ } };
         if (ANSWERS[hex]) return reply(ANSWERS[hex]);                                    // questions are answered
         got.push(hex);                                                                  // everything else is noted,
         if (cam.refuse && hex.startsWith('81010447') && hex.length === 26) return reply('906141ff');          // (a camera that will not take zoom and focus together)
-        reply('9041ff'); setTimeout(() => reply('9051ff'), cam.slow).unref();                   // acknowledged, and reported done
+        reply('9041ff'); const t = setTimeout(() => { pending.delete(t); reply('9051ff'); }, cam.slow); pending.add(t);       // acknowledged, and reported done
     });
     socket.bind(1259, '127.0.0.1', () => resolve(cam));
     socket.on('error', () => resolve(null));                                  // the port is taken: skip
