@@ -394,6 +394,46 @@
             : 'This is the list macOS offers right now (Photo Booth shows the same one). An iPhone appears while it is nearby with Bluetooth and Wi‑Fi on and Continuity Camera enabled.';
     }
     $('findDevices').onclick = () => refreshDevices(true);
+    /** Cameras that announce themselves on the network, each with whether this computer can reach it and, if not, what to set. */
+    async function searchNetwork() {
+        const button = $('searchNetwork'), status = $('searchStatus'), list = $('foundList');
+        button.disabled = true; status.textContent = 'Listening for cameras on every adapter…';
+        let result;
+        try { result = await api.cameras.discover(); }
+        catch (e) { status.textContent = e.message.replace(/^Error invoking remote method '[^']+': (Error: )?/, ''); button.disabled = false; return; }
+        button.disabled = false;
+        const searched = result.adapters.map(a => `${a.label} (${a.address})`).join(', ');
+        status.textContent = result.cameras.length ? `${result.cameras.length} found` : '';
+        const el = (tag, className, text) => { const node = document.createElement(tag); if (className) node.className = className; if (text !== undefined) node.textContent = text; return node; };
+        const rows = result.cameras.map(camera => {
+            const item = el('div', 'found-item'), head = el('div', 'found-head');
+            head.append(el('strong', '', camera.name), el('span', 'small', [camera.address || camera.host, camera.kinds.join(' + ')].filter(Boolean).join(' · ')));
+            if (camera.rtsp) {
+                const have = cameraList.some(c => c.url === camera.rtsp.url), add = el('button', '', have ? 'Added' : camera.rtsp.needsLogin ? 'Fill in' : 'Add');
+                add.type = 'button'; add.disabled = have;
+                add.onclick = async () => {
+                    // One that asks for a login goes into the form, to have user:password@ put in front; the others are added as they are.
+                    if (camera.rtsp.needsLogin) { $('camName').value = camera.name; $('camUrl').value = camera.rtsp.url.replace('rtsp://', 'rtsp://user:password@'); $('camUrl').focus(); return; }
+                    add.disabled = true;
+                    try { await api.cameras.add({ name: camera.name, url: camera.rtsp.url }); add.textContent = 'Added'; await refreshCameras(); } catch (e) { showError(e); add.disabled = false; }
+                };
+                head.append(add);
+            }
+            item.append(head, el('p', 'small', camera.explanation));
+            const fix = camera.diagnosis.fix;
+            if (fix && fix.command) {
+                const line = el('div', 'fix'), copy = el('button', '', 'Copy');
+                copy.type = 'button'; copy.title = 'Copy this command; run it in a terminal';
+                copy.onclick = async () => { try { await navigator.clipboard.writeText(fix.command); copy.textContent = 'Copied'; } catch (e) { copy.textContent = 'Select it'; } setTimeout(() => { copy.textContent = 'Copy'; }, 1500); };
+                line.append(el('code', '', fix.command), copy);
+                item.append(line, el('p', 'small', `Or by hand: ${fix.where}, IP address ${fix.address}, subnet mask ${fix.netmask}.`));
+            }
+            return item;
+        });
+        if (!rows.length) rows.push(el('p', 'small', `No camera announced itself${searched ? ` on ${searched}` : ''}. Cameras are found by their NDI, RTSP or ONVIF announcement; one with those switched off, or on a network that blocks them, can still be added by its address below.${result.notes.length ? ' ' + result.notes.join('; ') + '.' : ''}`));
+        list.replaceChildren(...rows);
+    }
+    $('searchNetwork').onclick = searchNetwork;
     // Cameras come and go: keep the list current. A camera that went away is not reopened on its own; its tile has Reconnect.
     if (navigator.mediaDevices) navigator.mediaDevices.addEventListener('devicechange', () => refreshDevices(false));
     function renderCameras() {

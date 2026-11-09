@@ -104,6 +104,10 @@ app.on('browser-window-created', (event, win) => {
         check(!renamed.open && renamed.tiles.join(',') === 'Pool,Finish line' && renamed.sims === 1 && renamed.select === 'Pool,Finish line', `saved: renamed to Finish line, back to real; the program camera list follows`);
         await js(`[...document.querySelectorAll('.tile')].find(t => t.querySelector('.name').textContent === 'Finish line').querySelector('.gear').click()`); await wait(300); await click('cdRemove', 1200);
         check(await js(`document.querySelectorAll('.tile').length === 1 && ${text('camerasLabel')} === 'Camera'`), 'removed from its dialog; tab reads Camera again');
+        // Search the network: whatever is out there today, the search finishes and says what it found, with any fix written out.
+        await js(`document.getElementById('searchNetwork').click()`);
+        let search; for (let i = 0; i < 40; i++) { await wait(300); search = await js(`({ busy: document.getElementById('searchNetwork').disabled, status: ${text('searchStatus')}, rows: document.querySelectorAll('#foundList .found-item').length, none: document.querySelectorAll('#foundList > p').length, fixes: [...document.querySelectorAll('#foundList .fix code')].map(c => c.textContent) })`); if (!search.busy) break; }
+        check(!search.busy && (search.rows > 0 ? /^\d+ found$/.test(search.status) : search.none === 1) && search.fixes.every(f => /\d+\.\d+\.\d+\.\d+/.test(f)), `the network search finishes: ${search.rows ? search.status : 'no camera announced itself'}${search.fixes.length ? ' · fix: ' + search.fixes.join(' | ') : ''}`);
         // A camera on this computer, when there is one: open, Disconnect from the tile, Reconnect, open again.
         const device = await js(`navigator.mediaDevices.enumerateDevices().then(ds => ds.find(d => d.kind === 'videoinput' && d.deviceId) || null).then(d => d && { id: d.deviceId, label: d.label })`);
         const cameraAccess = device ? await js(`window.lanecast.cameras.access()`) : 'none';
