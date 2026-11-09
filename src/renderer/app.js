@@ -179,7 +179,7 @@
      *  iPhone's Disconnect, a cable pulled) it stays off until Reconnect is pressed: retrying on its own would
      *  keep waking a phone someone has just put away. */
     const LOOK_MS = 90000;
-    const PHONE_HINT = 'lock the phone and set it down in landscape near this Mac, or plug it in';
+    const PHONE_HINT = 'after the phone’s own Disconnect button, macOS offers it again only once it is locked and set down in landscape nearby, or plugged in (use the tile’s Disconnect instead to keep it on hand)';
     class Player {
         constructor(camera, video) { this.id = camera.id; this.camera = camera; this.video = video; this.pc = null; this.stream = null; this.standIn = null; this.timer = null; this.stopped = false; this.frames = 0; this.frameAt = 0; this.startedAt = performance.now(); this.state = 'connecting'; this.error = ''; this.attempt = 0; this.lookingUntil = 0; this.start(); }
         get isDevice() { return !this.camera.simulate && !!this.camera.url && this.camera.url.startsWith('device:'); }
@@ -208,6 +208,9 @@
         get looking() { return this.state === 'connecting' && this.lookingUntil ? Math.max(0, Math.ceil((this.lookingUntil - performance.now()) / 1000)) : 0; }
         /** Stop pressed while looking. */
         cancel() { this.attempt++; clearTimeout(this.timer); this.close(); this.lookingUntil = 0; this.state = 'off'; this.error = 'stopped looking'; render(); }
+        /** Disconnect pressed on the tile: let the camera go, but from this side, so macOS keeps offering it and Reconnect finds it at once.
+         *  (The phone's own Disconnect button withdraws it from the Mac until the phone is locked and set down again, or plugged in.) */
+        disconnect() { this.attempt++; clearTimeout(this.timer); this.close(); this.video.srcObject = null; this.frames = 0; this.frameAt = 0; this.state = 'off'; this.error = 'by you · Reconnect when ready'; render(); }
         async start(wait = false) {
             if (this.stopped) return;
             if (this.camera.simulate) { this.standIn ||= new StandIn(); this.standIn.setMedia(this.camera); this.video.srcObject = this.standIn.stream; return; }
@@ -404,10 +407,12 @@
             figure.querySelector('.name').textContent = c.name;
             figure.querySelector('.sim-badge').hidden = !c.simulate;
             const box = figure.querySelector('.camSim'); if (box.checked !== c.simulate) box.checked = c.simulate; box.disabled = !c.url;
-            const again = figure.querySelector('.reconnect'), looking = player.looking;
-            again.hidden = !player.isDevice || player.live; again.disabled = player.state === 'connecting' && !looking;
-            again.textContent = looking ? 'Stop' : 'Reconnect';
-            again.onclick = looking ? () => player.cancel() : () => { player.reconnect(); render(); };
+            // One button for a camera on this computer: Disconnect while it is open, Stop while looking, else Reconnect.
+            const again = figure.querySelector('.reconnect'), looking = player.looking, open = player.state === 'open';
+            again.hidden = !player.isDevice; again.disabled = player.state === 'connecting' && !looking;
+            again.textContent = looking ? 'Stop' : open ? 'Disconnect' : 'Reconnect';
+            again.title = open ? 'Let the camera go from here; Reconnect brings it back at once. The phone’s own Disconnect button withdraws it from the Mac until it is locked and set down again.' : 'Open this camera again';
+            again.onclick = looking ? () => player.cancel() : open ? () => player.disconnect() : () => { player.reconnect(); render(); };
             if (player.live) { live++; status.textContent = `${c.simulate ? 'Stand-in' : 'Live'} · ${v.videoWidth}×${v.videoHeight}`; status.className = 'small live'; }
             else {
                 status.className = 'small';
