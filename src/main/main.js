@@ -215,7 +215,7 @@ ipcMain.handle('ptz:home', (event, id) => { const host = hostOf(id); return host
 ipcMain.handle('ptz:savePosition', async (event, id, name) => {
     const host = hostOf(id);
     if (!host || !await ptz.probe(host)) throw new Error('That camera cannot be steered from here');
-    const spot = await ptz.where(host), saved = cameras.savePosition(String(id), name, spot);
+    const spot = await ptz.where(host, true), saved = cameras.savePosition(String(id), name, spot);          // pan, tilt, zoom, and the focus with them
     if (!spot) ptz.preset(host, saved.preset, true);
     return cameras.describe(cameras.find(String(id))).positions;
 });

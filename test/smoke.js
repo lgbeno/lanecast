@@ -99,7 +99,9 @@ app.on('browser-window-created', (event, win) => {
         // A second camera, by hand: Add manually… opens the dialog, Add closes it; the tab turns plural.
         await js(`document.getElementById('manualAdd').click()`); await wait(300);
         const manual = await js(`({ open: document.getElementById('manualDialog').open, fields: [...document.getElementById('manualDialog').querySelectorAll('input')].map(i => i.id).join() })`);
-        await js(`document.getElementById('camName').value = 'Finish'; document.getElementById('camUrl').value = 'rtsp://127.0.0.1:1/none'`); await click('camAddButton', 1500);
+        await js(`document.getElementById('camName').value = 'Finish'; document.getElementById('camUrl').value = 'rtsp://127.0.0.1:1/none'`); await click('camAddButton', 300);
+        for (let i = 0; i < 30 && await js(`document.getElementById('manualDialog').open`); i++) await wait(300);          // the camera engine takes the address, a moment or several
+        await wait(600);
         check(manual.open && manual.fields === 'camName,camUrl' && !(await js(`document.getElementById('manualDialog').open`)), 'Add manually… is just a name and an address; adding closes it');
         const stacked = await js(`[...document.querySelectorAll('#cameraList .tile')].map(t => { const r = t.getBoundingClientRect(); return [Math.round(r.x), Math.round(r.y)]; })`);
         check(stacked.length === 2 && stacked[0][0] === stacked[1][0] && stacked[1][1] > stacked[0][1], `the cameras are stacked one under another, not side by side: ${JSON.stringify(stacked)}`);
@@ -128,8 +130,8 @@ app.on('browser-window-created', (event, win) => {
         check(two.label === 'Cameras' && two.tiles.join(',') === 'Pool,Finish', `a second camera: tab reads Cameras, tiles ${two.tiles.join(' and ')}`);
         // Steering: a stand-in camera at that address answers the version question, so the tile grows its controls, and they send.
         const steered = [], stand = require('node:dgram').createSocket('udp4');
-        let asked = 0;                                   // the stand-in says where it points too: a new pan each time (0x0123, 0x0223, ...), tilt 0x0045, zoom 0x1234
-        stand.on('message', (buf, from) => { const hex = buf.toString('hex'); steered.push(hex); const reply = hex === '81090002ff' ? '905002010607101501ff' : hex === '81090612ff' ? `9050000${++asked}020300000405ff` : hex === '81090447ff' ? '905001020304ff' : null; if (reply) stand.send(Buffer.from(reply, 'hex'), from.port, from.address); });
+        let at = 1;                                      // the stand-in says where it points too: pan 0x0<at>23 (the test moves it), tilt 0x0045, zoom 0x1234, focus 0xabcd in autofocus
+        stand.on('message', (buf, from) => { const hex = buf.toString('hex'); steered.push(hex); const reply = hex === '81090002ff' ? '905002010607101501ff' : hex === '81090612ff' ? `9050000${at}020300000405ff` : hex === '81090447ff' ? '905001020304ff' : hex === '81090448ff' ? '90500a0b0c0dff' : hex === '81090438ff' ? '905002ff' : null; if (reply) stand.send(Buffer.from(reply, 'hex'), from.port, from.address); });
         const standing = await new Promise(resolve => { stand.once('error', () => resolve(false)); stand.bind(1259, '127.0.0.1', () => resolve(true)); });
         if (!standing) console.log('SKIP steering: UDP 1259 is in use on this computer');
         else {
@@ -143,17 +145,18 @@ app.on('browser-window-created', (event, win) => {
             const drives = steered.filter(m => m === '810106010a010203ff').length, moved = steered.filter(m => m !== '81090002ff');
             check(drives >= 2 && moved.includes('8101060101010303ff') && moved.indexOf('8101060101010303ff') > moved.indexOf('810106010a010203ff'), `holding ▶ drives right at the chosen speed, renewed while held (${drives} times), and letting go stops`);
             // Positions have names. Saving one reads where the camera points and keeps that; nothing is stored in the camera.
-            const QUESTIONS = ['81090002ff', '81090612ff', '81090447ff'];
+            const QUESTIONS = ['81090002ff', '81090612ff', '81090447ff', '81090448ff', '81090438ff'];
             const sentSince = from => steered.slice(from).filter(m => !QUESTIONS.includes(m));
-            const goes = pan => `810106021814000${pan}020300000405ff,8101044701020304ff`;        // the absolute move to pan 0x0<pan>23, tilt 0x0045, then zoom 0x1234
+            // Going to a position: the absolute move to pan 0x0<pan>23 and tilt 0x0045, the zoom 0x1234, and, once arrived, manual focus, the focus 0xabcd, autofocus again.
+            const goes = pan => `810106021814000${pan}020300000405ff,8101044701020304ff,8101043803ff,810104480a0b0c0dff,8101043802ff`, ARRIVES = 2100;
             const saveAs = async (scope, name) => { await js(`(() => { const root = ${scope}; root.querySelector('.ptzAdd').click(); const input = root.querySelector('.ptz-save input'); input.value = ${JSON.stringify(name)}; input.dispatchEvent(new Event('input')); root.querySelector('.ptz-save .primary').click(); })()`); await wait(900); };
             const chips = scope => js(`[...${scope}.querySelectorAll('.ptzPlace')].map(b => b.textContent)`);
             const press = (scope, name) => js(`[...${scope}.querySelectorAll('.ptzPlace')].find(b => b.dataset.position === ${JSON.stringify(name)}).click()`);
             let mark = steered.length;
-            await saveAs(finishTile, 'Finish line'); await saveAs(finishTile, 'Blocks');
+            await saveAs(finishTile, 'Finish line'); at = 2; await saveAs(finishTile, 'Blocks');
             check((await chips(finishTile)).join() === 'Finish line,Blocks' && sentSince(mark).length === 0 && steered.slice(mark).filter(m => m === '81090612ff').length === 2, 'two positions saved by name on the tile: the camera is asked where it points, and nothing is stored in it');
-            mark = steered.length; await press(finishTile, 'Finish line'); await wait(400);
-            check(sentSince(mark).join() === goes(1), `pressing a position sends the camera to the pan, tilt and zoom it was saved at: ${sentSince(mark).join(' ')}`);
+            mark = steered.length; await press(finishTile, 'Finish line'); await wait(ARRIVES);
+            check(sentSince(mark).join() === goes(1), `pressing a position sends the camera to the pan, tilt and zoom it was saved at, then sets its focus and hands back to autofocus: ${sentSince(mark).join(' ')}`);
             // The Stream tab: Camera control appears beside Theme controls and steers from there, with the same positions.
             await js(`document.getElementById('tab-stream').click()`); await wait(400);
             const offered = await js(`({ button: !document.getElementById('cameraControlToggle').hidden, panel: !document.getElementById('cameraPanel').hidden })`);
@@ -161,12 +164,12 @@ app.on('browser-window-created', (event, win) => {
             const panel = `document.getElementById('cameraPanel')`;
             const open = await js(`({ shown: !${panel}.hidden, name: document.getElementById('cameraPanelName').textContent, arrows: [...${panel}.querySelectorAll('.ptz button')].slice(0, 4).map(b => b.textContent).join(''), pressed: document.getElementById('cameraControlToggle').getAttribute('aria-pressed') })`);
             check(offered.button && !offered.panel && open.shown && open.name === 'Finish' && open.arrows === '◀▲▼▶' && open.pressed === 'true' && (await chips(panel)).join() === 'Finish line,Blocks', `the Stream tab offers Camera control; its panel steers ${open.name} with the same positions`);
-            mark = steered.length; await press(panel, 'Blocks'); await wait(400);
+            mark = steered.length; await press(panel, 'Blocks'); await wait(ARRIVES);
             check(sentSince(mark).join() === goes(2), 'a position pressed on the Stream tab sends the camera there');
             // A theme cues a position by its name, whatever the case; a name the camera does not have is noted, not sent.
             const overlayFrame = win.webContents.mainFrame.framesInSubtree.find(f => f.url.includes('/overlay.html'));
             mark = steered.length;
-            await overlayFrame.executeJavaScript(`Lanecast.position('finish LINE', 'Finish'); Lanecast.position('Nowhere', 'Finish'); Lanecast.position('Blocks', 'Pool'); true`); await wait(700);
+            await overlayFrame.executeJavaScript(`Lanecast.position('finish LINE', 'Finish'); Lanecast.position('Nowhere', 'Finish'); Lanecast.position('Blocks', 'Pool'); true`); await wait(ARRIVES);
             const noted = await js(`document.getElementById('themeLog').textContent`);
             check(sentSince(mark).join() === goes(1) && /no position named "Nowhere"/.test(noted) && /Pool cannot be steered/.test(noted), `a theme cues a position by name (Lanecast.position); unknown names and cameras that cannot be steered are noted in the theme console`);
             const packet = await overlayFrame.executeJavaScript(`JSON.stringify(Lanecast.state.cameras)`);
@@ -175,10 +178,10 @@ app.on('browser-window-created', (event, win) => {
             // Edit…: re-teach a position to where the camera points now; remove another; neither moves the camera. Then Home.
             const editing = (name, button) => js(`(() => { const root = ${finishTile}; if (root.querySelector('.ptzEdit').textContent !== 'Done') root.querySelector('.ptzEdit').click(); [...root.querySelectorAll('.ptzPlace')].find(b => b.dataset.position === ${JSON.stringify(name)}).click(); const label = root.querySelector('.ptz-save .primary').textContent; root.querySelector(${JSON.stringify(button)}).click(); return label; })()`);
             mark = steered.length;
-            const label = await editing('Finish line', '.ptz-save .primary'); await wait(900);
+            at = 3; const label = await editing('Finish line', '.ptz-save .primary'); await wait(900);
             const quiet = sentSince(mark).length === 0;
             await js(`${finishTile}.querySelector('.ptzEdit').click()`); await wait(200); mark = steered.length;
-            await press(finishTile, 'Finish line'); await wait(400);
+            await press(finishTile, 'Finish line'); await wait(ARRIVES);
             check(label === 'Re-teach here' && quiet && sentSince(mark).join() === goes(3), `Edit… then a position offers Re-teach here: it now goes to where the camera pointed when re-taught (${sentSince(mark)[0]})`);
             mark = steered.length;
             await editing('Blocks', '.ptz-save .ptzRemove'); await wait(900);

@@ -160,9 +160,12 @@ class CameraEngine {
         if (!name) throw new Error('Give the position a name');
         c.positions ||= [];
         const had = this._position(c, name), position = had || { name };
-        if (spot) { delete position.preset; position.pan = spot.pan; position.tilt = spot.tilt; position.zoom = Number.isInteger(spot.zoom) ? spot.zoom : null; }
+        if (spot) {
+            delete position.preset; position.pan = spot.pan; position.tilt = spot.tilt; position.zoom = Number.isInteger(spot.zoom) ? spot.zoom : null;
+            position.focus = Number.isInteger(spot.focus) ? spot.focus : null; position.focusAuto = spot.focusAuto !== false;
+        }
         else {
-            delete position.pan; delete position.tilt; delete position.zoom;
+            delete position.pan; delete position.tilt; delete position.zoom; delete position.focus; delete position.focusAuto;
             if (!Number.isInteger(position.preset)) {
                 const preset = allocatePreset(c.positions);
                 if (preset === null) throw new Error('This camera has as many positions as it can hold; remove one first');

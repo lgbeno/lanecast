@@ -127,7 +127,7 @@ Lanecast.on('lane.finish', e => { if (e.place === 1) Lanecast.position('Finish l
 Lanecast.position('Scoreboard', 'Deck cam');                            // another camera, by its name
 ```
 
-The camera takes a moment to travel, so cue a position a beat before the graphic that needs it, and consider cutting to another camera while it moves. The names are whatever the user typed, compared without regard to case; `state.cameras[i].positions` lists them, so a control panel can offer a button for each (the template's does), and a theme that depends on particular names should say which in its `description`. A name the camera does not have is ignored and noted in the Theme tab's console. Like the other director calls, this does nothing outside Lanecast.
+A position holds the pan, tilt, zoom and focus the user saved. The camera takes a moment to travel (and about a second more to set its focus), so cue a position a beat before the graphic that needs it, and consider cutting to another camera while it moves. The names are whatever the user typed, compared without regard to case; `state.cameras[i].positions` lists them, so a control panel can offer a button for each (the template's does), and a theme that depends on particular names should say which in its `description`. A name the camera does not have is ignored and noted in the Theme tab's console. Like the other director calls, this does nothing outside Lanecast.
 
 ## The control panel
 
